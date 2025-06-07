@@ -7,9 +7,9 @@ A nix library for parsing, validating and manipulating IPv4 and IPv6 addresses.
 - **Compose** string addresses from integer parts and mask values
 - **Validate** IPv4/6 addresses
 - **Type support** for NixOS modules and options
-- **IPv6 compression support** Use of `::` supported 
+- **IPv6 compression support** use of compression operator `::` supported 
 
-## Installation
+## Usage
 
 Import the library in your Nix flake:
 
