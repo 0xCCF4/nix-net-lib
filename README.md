@@ -7,6 +7,7 @@ A nix library for parsing, validating and manipulating IPv4 and IPv6 addresses.
 - **Compose** string addresses from integer parts and mask values
 - **Validate** IPv4/6 addresses
 - **Type support** for NixOS modules and options
+- **IPv6 compression support** Use of `::` supported 
 
 ## Installation
 
@@ -85,7 +86,7 @@ When using the overlay, types are added into `lib.types.net.XXX`, otherwise type
 ### Function reference
 When using the overlay, function are added into `lib.net.XXX`, otherwise functions are available via `nix-net-lib.lib.XXXX`.
 
-#### `pow`
+### `pow`
 Computes the power of a number raised to a positive integer exponent.
 
 - **Type:** `Int -> Int -> Number`
@@ -93,7 +94,7 @@ Computes the power of a number raised to a positive integer exponent.
 
 ---
 
-#### `partsBitAnd`
+### `partsBitAnd`
 Bitwise AND of two lists of integers representing IP address parts.
 
 - **Type:** `[ Int ] -> [ Int ] -> [ Int ]`
