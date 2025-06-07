@@ -19,7 +19,7 @@ inputs = {
 };
 ```
 
-and optionally (recommended) add its overlay to your NixOS config:
+and optionally add its overlay to your NixOS config:
 
 ```nix
 nixpkgs.overlays = [ nix-net-lib.overlays.default ];
