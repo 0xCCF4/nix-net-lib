@@ -1,4 +1,4 @@
-{ nixpkgs ? import <nixpkgs> {}
+{ nixpkgs ? import <nixpkgs> { }
 , lib ? nixpkgs.lib
 , ...
 }:
@@ -31,46 +31,53 @@ let
       lstAfterGap = lists.sublist (gapIndex + 1) (length parts) parts;
       lstFiller = genList (i: "0") (meta.components - length parts + 1);
     in
-      if length gaps > 1 then
-        null
-      else if length gaps == 0 then
-        parts
-      else
-        lstBeforeGap ++ lstFiller ++ lstAfterGap;
+    if length gaps > 1 then
+      null
+    else if length gaps == 0 then
+      parts
+    else
+      lstBeforeGap ++ lstFiller ++ lstAfterGap;
 
   ipGapJoin = meta: parts:
     let
-      findGaps = foldl (acc: part: let
-        currentGapOrNull = filter (x: x.end == part.index - 1) acc;
-        currentGap = if length currentGapOrNull > 0 then head currentGapOrNull // {end=part.index;} else {start=part.index; end=part.index;};
-      in
-        if part.value == 0 then
-          (filter (gap: gap.start != currentGap.start) acc) ++ [currentGap]
-        else
-          acc
-      ) [] (map (x: {value = x.fst; index = x.snd;}) (lists.zipLists parts (genList (i: i) meta.components)));
+      findGaps = foldl
+        (acc: part:
+          let
+            currentGapOrNull = filter (x: x.end == part.index - 1) acc;
+            currentGap = if length currentGapOrNull > 0 then head currentGapOrNull // { end = part.index; } else { start = part.index; end = part.index; };
+          in
+          if part.value == 0 then
+            (filter (gap: gap.start != currentGap.start) acc) ++ [ currentGap ]
+          else
+            acc
+        ) [ ]
+        (map (x: { value = x.fst; index = x.snd; }) (lists.zipLists parts (genList (i: i) meta.components)));
 
-      longestGap = if length findGaps == 0 then
-        null
-      else
-        foldl (acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc) (head findGaps) findGaps;
+      longestGap =
+        if length findGaps == 0 then
+          null
+        else
+          foldl (acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc) (head findGaps) findGaps;
 
       strParts = map meta.componentToString parts;
 
-      lstBeforeGap = if longestGap.start == 0 then
-        [""]
-      else
-        lists.sublist 0 longestGap.start strParts;
+      lstBeforeGap =
+        if longestGap.start == 0 then
+          [ "" ]
+        else
+          lists.sublist 0 longestGap.start strParts;
 
-      lstAfterGap = if longestGap.end == meta.components - 1 then
-        [""]
-      else
-        lists.sublist (longestGap.end + 1) meta.components strParts;
+      lstAfterGap =
+        if longestGap.end == meta.components - 1 then
+          [ "" ]
+        else
+          lists.sublist (longestGap.end + 1) meta.components strParts;
 
-      strPartsRemovedGap = if longestGap == null then
-        strParts
-      else
-        lstBeforeGap ++ [""] ++ lstAfterGap;
+      strPartsRemovedGap =
+        if longestGap == null then
+          strParts
+        else
+          lstBeforeGap ++ [ "" ] ++ lstAfterGap;
     in
     concatStringsSep ":" strPartsRemovedGap;
 in
@@ -104,7 +111,7 @@ rec {
     else
       val * pow val (exp - 1);
 
-    /**
+  /**
       Computes the bitwise AND of two lists of integers representing IP address parts.
 
       # Input
@@ -119,11 +126,11 @@ rec {
       [ Int ] -> [ Int ] -> [ Int ]
       ```
       */
-    partsBitAnd = addressParts: maskParts:
-      if length addressParts != length maskParts then
-        throw "partsBitAnd expects lists of equal length, got ${toString (length addressParts)} and ${toString (length maskParts)}"
-      else
-        map (x: bitAnd x.fst x.snd) (lists.zipLists addressParts maskParts);
+  partsBitAnd = addressParts: maskParts:
+    if length addressParts != length maskParts then
+      throw "partsBitAnd expects lists of equal length, got ${toString (length addressParts)} and ${toString (length maskParts)}"
+    else
+      map (x: bitAnd x.fst x.snd) (lists.zipLists addressParts maskParts);
 
 
   ipN = meta: rec {
@@ -241,7 +248,7 @@ rec {
             meta.componentIsValidString part && partInt >= 0 && partInt <= meta.componentMask)
           chunkedAddress;
 
-        chunks = map toInt chunkedAddress;
+        chunks = map meta.componentFromString chunkedAddress;
         maskInt = toInt mask;
         networkMask = calculateNetworkMaskParts maskInt;
         deviceMask = calculateDeviceMaskParts maskInt;
@@ -384,6 +391,25 @@ rec {
       in
       result != null && result.addressNoMask == val;
 
+    /**
+        Checks if the given value is a valid IP address in CIDR notation with trailing /mask.
+    
+        # Input
+        `val` : A string representing the IP address in CIDR notation, e.g. "1.2.3.4/32"
+
+        # Output
+        A boolean indicating whether the input is a valid IP address in CIDR notation with trailing /mask.
+        # Type
+        ```nix
+        String -> Bool
+        ```
+        */
+    checkWithMask = val:
+      let
+        result = decompose' val;
+      in
+      result != null && result.address == val;
+
     types.ip = lib.mkOptionType {
       name = meta.name;
       description = meta.description;
@@ -398,7 +424,14 @@ rec {
       check = checkNoMask;
     };
 
-        types.ipNetwork = lib.mkOptionType {
+    types.ipExplicitMask = lib.mkOptionType {
+      name = "${meta.name}ExplicitMask";
+      description = "${meta.description} with explicit mask";
+      descriptionClass = "noun";
+      check = checkWithMask;
+    };
+
+    types.ipNetwork = lib.mkOptionType {
       name = "${meta.name}Network";
       description = "Normalized network part of an ${meta.description}";
       descriptionClass = "noun";
@@ -433,7 +466,7 @@ rec {
     bitWidth = 128; # Total bit width of an IPv6 address
     componentIsValidString = checkHex; # Function to check if a string is a valid component
     componentFromString = trivial.fromHexString; # Function to convert a component string to an integer
-    componentToString = trivial.toHexString; # Function to convert a component integer to a string
+    componentToString = x: strings.toLower (trivial.toHexString x); # Function to convert a component integer to a string
     strToParts = ipGapSplit ip6.meta; # Function to split a string representation of an IP address into its components
     partsToStr = ipGapJoin ip6.meta; # Function to convert a list of components to a string representation
   };
@@ -442,8 +475,17 @@ rec {
     ip = lib.types.oneOf [ ip4.types.ip ip6.types.ip ];
     ip4 = ip4.types.ip;
     ip6 = ip6.types.ip;
+
     ipNetwork = lib.types.oneOf [ ip4.types.ipNetwork ip6.types.ipNetwork ];
     ip4Network = ip4.types.ipNetwork;
     ip6Network = ip6.types.ipNetwork;
+
+    ipNoMask = lib.types.oneOf [ ip4.types.ipNoMask ip6.types.ipNoMask ];
+    ip4NoMask = ip4.types.ipNoMask;
+    ip6NoMask = ip6.types.ipNoMask;
+
+    ipExplicitMask = lib.types.oneOf [ ip4.types.ipExplicitMask ip6.types.ipExplicitMask ];
+    ip4ExplicitMask = ip4.types.ipExplicitMask;
+    ip6ExplicitMask = ip6.types.ipExplicitMask;
   };
 }

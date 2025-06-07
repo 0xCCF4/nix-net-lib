@@ -1,5 +1,5 @@
-{netLib, ip4 ? netLib.ip4, ip6 ? netLib.ip6, pow ? netLib.pow, nixpkgs, lib ? nixpkgs.lib, ...}: {
-    tests = with builtins; with lib; 
+{ netLib, ip4 ? netLib.ip4, ip6 ? netLib.ip6, pow ? netLib.pow, nixpkgs, lib ? nixpkgs.lib, ... }: {
+  tests = with builtins; with lib;
     let
       testCases = [
         {
@@ -60,7 +60,7 @@
           description = "Invalid IP address should return null";
         }
         {
-          expression = ip4.decompose' {};
+          expression = ip4.decompose' { };
           expected = null;
           description = "Invalid IP address should return null";
         }
@@ -162,14 +162,14 @@
           description = "IPv4 device mask for /13";
         }
         {
-          expression = ip6.decompose' "1:2:3:4::1/64";
+          expression = ip6.decompose' "fe80:2:3:4::1/64";
           expected = {
-            addressParts = [ 1 2 3 4 0 0 0 1 ];
-            address = "1:2:3:4::1/64";
-            addressNoMask = "1:2:3:4::1";
-            networkParts = [ 1 2 3 4 0 0 0 0 ];
-            network = "1:2:3:4::/64";
-            networkNoMask = "1:2:3:4::";
+            addressParts = [ 65152 2 3 4 0 0 0 1 ];
+            address = "fe80:2:3:4::1/64";
+            addressNoMask = "fe80:2:3:4::1";
+            networkParts = [ 65152 2 3 4 0 0 0 0 ];
+            network = "fe80:2:3:4::/64";
+            networkNoMask = "fe80:2:3:4::";
             deviceParts = [ 0 0 0 0 0 0 0 1 ];
             device = "::1/64";
             deviceNoMask = "::1";
@@ -193,7 +193,7 @@
           description = "Invalid IP address should return null";
         }
         {
-          expression = ip6.decompose' {};
+          expression = ip6.decompose' { };
           expected = null;
           description = "Invalid IP address should return null";
         }
@@ -240,24 +240,26 @@
       ];
     in
     foldl
-      (acc: testCase: let
-        expression = testCase.expression;
-        expected = testCase.expected;
-        description = testCase.description;
+      (acc: testCase:
+        let
+          expression = testCase.expression;
+          expected = testCase.expected;
+          description = testCase.description;
 
-        allEqual = list: all (x: x == head list) list;
+          allEqual = list: all (x: x == head list) list;
 
-        zipped = attrsets.zipAttrs [expression expected];
-        onlyDifference = attrsets.filterAttrs (k: v: !(allEqual v) || length v != 2) zipped;
+          zipped = attrsets.zipAttrs [ expression expected ];
+          onlyDifference = attrsets.filterAttrs (k: v: !(allEqual v) || length v != 2) zipped;
 
-        differenceSet = attrNames onlyDifference;
+          differenceSet = attrNames onlyDifference;
 
-        mismatchString = if typeOf expected == "string" then
-          "Expected ${toJSON expected}, got ${toJSON expression}."
-          else if typeOf expected == "set" then
-            "Difference in attributes: ${toJSON onlyDifference}."
+          mismatchString =
+            if typeOf expected == "string" then
+              "Expected ${toJSON expected}, got ${toJSON expression}."
+            else if typeOf expected == "set" then
+              "Difference in attributes: ${toJSON onlyDifference}."
             else
-            "Expected ${toJSON expected}, got ${toJSON expression}.";
+              "Expected ${toJSON expected}, got ${toJSON expression}.";
         in
         if expression == expected || (typeOf expected == "set" && length differenceSet == 0) then
           acc + 1
