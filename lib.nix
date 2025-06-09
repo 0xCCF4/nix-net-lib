@@ -471,6 +471,31 @@ rec {
     partsToStr = ipGapJoin ip6.meta; # Function to convert a list of components to a string representation
   };
 
+  /**
+    A function that takes an IP address and returns the appropriate interface of functions to process it.
+
+    # Input
+    `address` : An IP address, which can be either an IPv4 or IPv6 address.
+
+    # Output
+    The ip4 or ip6 interface depending on the type of the input IP address.
+
+    # Errors
+    Throws an error if the input is not a valid IP address.
+
+    # Type
+    ```nix
+    String -> { ... }
+    ```
+    **/
+  ip = address:
+    if ip4.check address then
+      ip4
+    else if ip6.check address then
+      ip6
+    else
+      throw "Invalid IP address: ${toString address}";
+
   types = {
     ip = lib.types.oneOf [ ip4.types.ip ip6.types.ip ];
     ip4 = ip4.types.ip;

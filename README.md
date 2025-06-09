@@ -102,6 +102,19 @@ Bitwise AND of two lists of integers representing IP address parts.
 
 ---
 
+### `ip`
+A function that takes an IP address and returns the appropriate interface
+of functions to process it.
+
+- **Type:** `String -> {...}`
+- **Example:** ip "1.2.3.4"
+
+The resulting set is documented below. If provided an ip4 address, then the set `ip4`
+is returned, otherwise if an ip6 address is provided the set `ip6`, else an error is
+thrown.
+
+---
+
 ### `ip4`/`ip6` (IP Address Utilities)
 
 ### `composeStr`
