@@ -1,9 +1,9 @@
 { nixpkgs ? import <nixpkgs> { }
 , lib ? nixpkgs.lib
+, ip4
+, ip6
+, partsBitAnd
 , ...
-  , ip4
-  , ip6
-  , partsBitAnd
 }: with lib; with lib.types;
 let
   ipType = interface: mkOptionType {
