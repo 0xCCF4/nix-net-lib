@@ -68,20 +68,24 @@ See [lib.nix](lib.nix) for the full documentation.
 ### NixOS Option Types
 When using the overlay, types are added into `lib.types.net.XXX`, otherwise types are available via `nix-net-lib.lib.types.XXXX`.
 
-| Type Alias         | Description                                                        |
-|--------------------|--------------------------------------------------------------------|
-| `ip`               | IPv4 or IPv6 address                                               |
-| `ipNetwork`        | IPv4 or IPv6 network (address + mask), no device part              |
-| `ipNoMask`         | IPv4 or IPv6 address (no mask)                                     |
-| `ipExplicitMask`   | IPv4 or IPv6 address with an explicit mask                         |
-| `ip4`              | IPv4 address                                                       |
-| `ip4Network`       | IPv4 network (address + mask), no device part                      |
-| `ip4NoMask`        | IPv4 address (no mask)                                             |
-| `ip4ExplicitMask`  | IPv4 address with an explicit mask                                 |
-| `ip6`              | IPv6 address                                                       |
-| `ip6Network`       | IPv6 network (address + mask), no device part                      |
-| `ip6NoMask`        | IPv6 address (no mask)                                             |
-| `ip6ExplicitMask`  | IPv6 address with an explicit mask                                 |
+| Type Alias                | Description                                                                                     |
+|---------------------------|-------------------------------------------------------------------------------------------------|
+| `ip`                      | Any valid IPv4 or IPv6 address                                                                  |
+| `ipNetwork`               | Normalized IPv4 or IPv6 network address (address + mask, no device part)                        |
+| `ipNoMask`                | IPv4 or IPv6 address, without trailing mask                                                     |
+| `ipExplicitMask`          | IPv4 or IPv6 address, with explicit mask set                                                    |
+| `ip4`                     | Any valid IPv4 address                                                                          |
+| `ip6`                     | Any valid IPv6 address                                                                          |
+| `ip4Network`              | Normalized IPv4 network address (address + mask, no device part)                                |
+| `ip6Network`              | Normalized IPv6 network address (address + mask, no device part)                                |
+| `ip4NoMask`               | IPv4 address, without trailing mask                                                             |
+| `ip6NoMask`               | IPv6 address, without trailing mask                                                             |
+| `ip4ExplicitMask`         | IPv4 address, with explicit mask set                                                            |
+| `ip6ExplicitMask`         | IPv6 address, with explicit mask set                                                            |
+| `ip4WithinNetworkStrict <ipAddress>`  | IPv4 address within a given subnet, mask must match exactly                         |
+| `ip6WithinNetworkStrict <ipAddress>`  | IPv6 address within a given subnet, mask must match exactly                         |
+| `ip4WithinNetwork`        | IPv4 address within a given subnet, address may have a larger mask value than the subnet        |
+| `ip6WithinNetwork`        | IPv6 address within a given subnet, address may have a larger mask value than the subnet        |
 
 ### Function reference
 When using the overlay, function are added into `lib.net.XXX`, otherwise functions are available via `nix-net-lib.lib.XXXX`.
@@ -102,34 +106,35 @@ Bitwise AND of two lists of integers representing IP address parts.
 
 ---
 
-### `ip`
-A function that takes an IP address and returns the appropriate interface
-of functions to process it.
+### `subnetRelation'`
+Returns the network relation between two IP addresses as `"superset"`, `"equal"`, `"subset"`, `"disjoint"`, or `null` if invalid.
 
-- **Type:** `String -> {...}`
-- **Example:** ip "1.2.3.4"
-
-The resulting set is documented below. If provided an ip4 address, then the set `ip4`
-is returned, otherwise if an ip6 address is provided the set `ip6`, else an error is
-thrown.
+- **Type:** `String -> String -> String`
+- **Example:** `subnetRelation' "1.2.3.4/24" "1.2.0.0/16" # "subset"`
 
 ---
 
-### `ip4`/`ip6` (IP Address Utilities)
+### `subnetRelation`
+Like `subnetRelation'`, but throws on invalid input.
 
-### `composeStr`
-Converts a list of address parts and a mask to a CIDR string.
-
-- **Type:** `[ Int ] -> Int | null -> String`
-- **Example:** `composeStr [192 168 1 1] 24 # "192.168.1.1/24"`
+- **Type:** `String -> String -> String`
+- **Example:** `subnetRelation "1.2.3.4/16" "1.2.0.0/16" # "equal"`
 
 ---
 
-### `calculateNetworkMaskParts`
-Computes the network mask for a given CIDR mask.
+### `laysWithinSubnet'`
+Checks if an IP address is within a subnet (mask may be larger).
 
-- **Type:** `Int -> [ Int ]`
-- **Example:** `calculateNetworkMaskParts 24 # [255 255 255 0]`
+- **Type:** `String -> String -> Bool`
+- **Example:** `laysWithinSubnet' "1.2.3.4/24" "1.2.0.0/16" # true`
+
+---
+
+### `laysWithinSubnet`
+Like `laysWithinSubnet'`, but throws on invalid input.
+
+- **Type:** `String -> String -> Bool`
+- **Example:** `laysWithinSubnet "1.2.3.4/24" "1.2.0.0/16" # true`
 
 ---
 
@@ -156,6 +161,9 @@ Decomposes a CIDR address string into its components. Returns `null` if invalid.
     - `deviceParts`: Integers for the device part.
     - `device`: Device part as string.
     - `deviceNoMask`: Device part without mask.
+    - `networkMaskParts`: Network mask parts.
+    - `networkMask`: Network mask as string.
+    - `networkMaskNoMask`: Network mask without mask notation.
     - `mask`: CIDR mask as integer.
 
 ---
@@ -168,7 +176,7 @@ Like `decompose'`, but throws on invalid input.
 
 ---
 
-### `checkIpParts`
+### `ipX.checkIpParts`
 Checks if a list of integers is a valid IP address.
 
 - **Type:** `[ Int ] -> Bool`
@@ -176,7 +184,7 @@ Checks if a list of integers is a valid IP address.
 
 ---
 
-### `checkIpMask`
+### `ipX.checkIpMask`
 Checks if an integer is a valid CIDR mask.
 
 - **Type:** `Int -> Bool`
@@ -184,7 +192,7 @@ Checks if an integer is a valid CIDR mask.
 
 ---
 
-### `checkNormalizedNetwork`
+### `ipX.checkNormalizedNetwork`
 Checks if a string is a normalized network address.
 
 - **Type:** `String -> Bool`
@@ -192,7 +200,7 @@ Checks if a string is a normalized network address.
 
 ---
 
-### `check`
+### `ipX.check`
 Checks if a string is a valid IP address in CIDR notation.
 
 - **Type:** `String -> Bool`
@@ -200,7 +208,7 @@ Checks if a string is a valid IP address in CIDR notation.
 
 ---
 
-### `checkNoMask`
+### `ipX.checkNoMask`
 Checks if a string is a valid IP address without a mask.
 
 - **Type:** `String -> Bool`
@@ -208,7 +216,7 @@ Checks if a string is a valid IP address without a mask.
 
 ---
 
-### `checkWithMask`
+### `ipX.checkWithMask`
 Checks if a string is a valid IP address with an explicit mask.
 
 - **Type:** `String -> Bool`

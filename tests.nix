@@ -1,5 +1,5 @@
-{ netLib, ip4 ? netLib.ip4, ip6 ? netLib.ip6, pow ? netLib.pow, nixpkgs, lib ? nixpkgs.lib, ... }: {
-  tests = with builtins; with lib;
+{ netLib, nixpkgs, lib ? nixpkgs.lib, ... }: {
+  tests = with builtins; with lib; with netLib;
     let
       testCases = [
         {
@@ -45,6 +45,9 @@
             deviceParts = [ 0 0 0 1 ];
             device = "0.0.0.1/24";
             deviceNoMask = "0.0.0.1";
+            networkMaskParts = [ 255 255 255 0 ];
+            networkMask = "255.255.255.0/24";
+            networkMaskNoMask = "255.255.255.0";
             mask = 24;
           };
           description = "Decomposing a valid IPv4 address";
@@ -76,6 +79,9 @@
             deviceParts = [ 0 6 33 1 ];
             device = "0.6.33.1/13";
             deviceNoMask = "0.6.33.1";
+            networkMaskParts = [ 255 248 0 0 ];
+            networkMask = "255.248.0.0/13";
+            networkMaskNoMask = "255.248.0.0";
             mask = 13;
           };
           description = "Decomposing a valid IPv4 address with /13 mask";
@@ -173,6 +179,9 @@
             deviceParts = [ 0 0 0 0 0 0 0 1 ];
             device = "::1/64";
             deviceNoMask = "::1";
+            networkMaskParts = [ 65535 65535 65535 65535 0 0 0 0 ];
+            networkMask = "ffff:ffff:ffff:ffff::/64";
+            networkMaskNoMask = "ffff:ffff:ffff:ffff::";
             mask = 64;
           };
           description = "Decomposing a valid IPv4 address";
@@ -237,6 +246,27 @@
           expected = false;
           description = "Checking negative IPv6 mask";
         }
+
+        {
+          expression = subnetRelation' "1.2.3.4/24" "fe80::1/64";
+          expected = null;
+          description = "Subnet relation between IPv4 and IPv6 should return null";
+        }
+        {
+          expression = subnetRelation' "1.2.3.4/24" "1.2.3.88/24";
+          expected = "equal";
+          description = "Subnet relation between two IPv4 addresses should return equal";
+        }
+        {
+          expression = subnetRelation' "1.2.3.4/24" "1.2.88.19/12";
+          expected = "subset";
+          description = "Subnet relation between two IPv4 addresses should return subset";
+        }
+        {
+          expression = subnetRelation' "1.2.88.19/12" "1.2.3.4/24";
+          expected = "superset";
+          description = "Subnet relation between two IPv4 addresses should return superset";
+        }
       ];
     in
     foldl
@@ -249,7 +279,7 @@
           allEqual = list: all (x: x == head list) list;
 
           zipped = attrsets.zipAttrs [ expression expected ];
-          onlyDifference = attrsets.filterAttrs (k: v: !(allEqual v) || length v != 2) zipped;
+          onlyDifference = attrsets.filterAttrs (k: v: (!(allEqual v) || length v != 2) && (head (strings.stringToCharacters k) != "_")) zipped;
 
           differenceSet = attrNames onlyDifference;
 

@@ -1,7 +1,7 @@
 { nixpkgs ? import <nixpkgs> { }
 , lib ? nixpkgs.lib
 , ...
-}:
+}@inputs:
 with builtins; with lib;
 let
   rep2Add = mask: val:
@@ -82,7 +82,6 @@ let
     concatStringsSep ":" strPartsRemovedGap;
 in
 rec {
-
   /**
     Computes the power of a number raised to a positive integer exponent.
     If the exponent is negative, an error is thrown.
@@ -112,6 +111,136 @@ rec {
       val * pow val (exp - 1);
 
   /**
+     Computes the network relation of two ip addresses.
+
+    # Inputs
+    `a` : An IP address
+    `b`: An IP address
+
+    # Output
+    A string representing the relation of the two addresses:
+    - "superset"
+    - "equal"
+    - "subset"
+    - "disjoint"
+    - `null` if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
+
+    The output must be read as follows: "a" is <output> to/of "b".
+
+    # Type
+    ```nix
+    String -> String -> String
+    ```
+    */
+  subnetRelation' = address: network:
+    let
+      decomposedAddress = decompose' address;
+      decomposedNetwork = decompose' network;
+
+      validAddresses = decomposedNetwork != null && decomposedAddress != null &&
+        decomposedNetwork._meta.name == decomposedAddress._meta.name;
+
+      smallestMask = min decomposedAddress.mask decomposedNetwork.mask;
+
+      networkMask = (ip address).calculateNetworkMaskParts smallestMask;
+
+      valueNet = partsBitAnd decomposedAddress.networkParts networkMask;
+      networkNet = partsBitAnd decomposedNetwork.networkParts networkMask;
+      networkEqual = valueNet == networkNet;
+    in
+    if !validAddresses then
+      null
+    else if networkEqual && decomposedAddress.mask < decomposedNetwork.mask then
+      "superset"
+    else if networkEqual && decomposedAddress.mask == decomposedNetwork.mask then
+      "equal"
+    else if networkEqual && decomposedAddress.mask > decomposedNetwork.mask then
+      "subset"
+    else
+      "disjoint";
+
+  /**
+      Computes the network relation of two ip addresses.
+      Same as `subnetRelation'`, but throws an error if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
+
+      # Inputs
+      `a` : An IP address
+      `b`: An IP address
+
+      # Output
+      A string representing the relation of the two addresses:
+      - "superset"
+      - "equal"
+      - "subset"
+      - "disjoint"
+
+      The output must be read as follows: "a" is <output> to/of "b".
+
+      # Errors
+      Throws an error if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
+    */
+  subnetRelation = address: network:
+    let
+      result = subnetRelation' address network;
+    in
+    if result != null then result else throw "Invalid IP addresses: ${toString address} and ${toString network}";
+
+  /**
+     Checks whether the given IP address is within the given subnet.
+
+     Note that, this function accepts the ip address to have a larger network mask than
+     the subnet, i.e. the address 1.2.3.4/24 is part of the subnet 1.2.0.0/16.
+    If you want to check if the address is within the subnet and has the same network mask,
+    use `subnetRelation'` instead.
+
+    # Inputs
+    `address` : An IP address that is maybe part of a network.
+    `network`: An IP address representing a network.
+
+    # Output
+    A boolean indicating whether the address is within the subnet.
+
+    # Type
+    ```nix
+    String -> String -> Bool
+    ```
+   */
+  laysWithinSubnet' = address: network:
+    let
+      result = subnetRelation' address network;
+    in
+    if result == "equal" || result == "subset" then
+      true
+    else
+      false;
+
+  /**
+      Checks whether the given IP address is within the given subnet.
+      Same as `laysWithinSubnet'`, but throws an error if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
+
+      # Inputs
+      `address` : An IP address that is maybe part of a network.
+      `network`: An IP address representing a network.
+
+      # Output
+      A boolean indicating whether the address is within the subnet.
+
+      # Errors
+      Throws an error if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
+
+      # Type
+      ```nix
+      String -> String -> Bool
+      ```
+    */
+  laysWithinSubnet = address: network:
+    let
+      result = laysWithinSubnet' address network;
+    in
+    if result != null then result else throw "Invalid IP addresses: ${toString address} and ${toString network}";
+
+
+  /**
       Computes the bitwise AND of two lists of integers representing IP address parts.
 
       # Input
@@ -132,6 +261,106 @@ rec {
     else
       map (x: bitAnd x.fst x.snd) (lists.zipLists addressParts maskParts);
 
+
+
+  /**
+    Decomposes the given IP address using the appropriate IP interface.
+   
+    This function attempts to determine the type of the provided `address`
+    by using the `ip'` function. If a valid IP interface is found, it calls
+    the `decompose'` method of that interface to break down the address into
+    its components. If the address type is not recognized, it returns `null`.
+   
+    # Input
+    `address` : An IP address, which can be either an IPv4 or IPv6 address.
+    
+    # Output 
+    An attribute set containing the decomposed components of the IP address, or `null` if the address is invalid.
+    See `ipN.decompose'` for the structure of the output.
+
+    # Type
+    ```nix
+    String -> { ... } | null
+    ```
+   */
+  decompose' = address:
+    let
+      ipInterface = ip' address;
+    in
+    if ipInterface != null then
+      ipInterface.decompose' address
+    else
+      null;
+
+
+  /**
+    Decomposes the given IP address using the appropriate IP interface.
+    This function attempts to determine the type of the provided `address`
+    by using the `ip` function. If a valid IP interface is found, it calls
+    the `decompose` method of that interface to break down the address into
+    its components. If the address type is not recognized, it throws an error.
+
+    # Input
+    `address` : An IP address, which can be either an IPv4 or IPv6 address.
+
+    # Output
+    An attribute set containing the decomposed components of the IP address.
+    See `ipN.decompose` for the structure of the output.
+
+    # Errors
+    Throws an error if the input is not a valid IP address.
+
+    # Type
+    ```nix
+    String -> { ... }
+    ```
+    */
+  decompose = address:
+    let result = decompose' address;
+    in if result != null then result else throw "Invalid IP address: ${toString address}";
+
+  /**
+    A function that takes an IP address and returns the appropriate interface of functions to process it, or null if invalid.
+
+    # Input
+    `address` : An IP address, which can be either an IPv4 or IPv6 address.
+
+    # Output
+    The ip4 or ip6 interface depending on the type of the input IP address, or null if invalid.
+
+    # Type
+    ```nix
+    String -> { ... } | null
+    ```
+    **/
+  ip' = address:
+    if ip4.check address then
+      ip4
+    else if ip6.check address then
+      ip6
+    else
+      null;
+
+  /**
+    A function that takes an IP address and returns the appropriate interface of functions to process it.
+
+    # Input
+    `address` : An IP address, which can be either an IPv4 or IPv6 address.
+
+    # Output
+    The ip4 or ip6 interface depending on the type of the input IP address.
+
+    # Errors
+    Throws an error if the input is not a valid IP address.
+
+    # Type
+    ```nix
+    String -> { ... }
+    ```
+    **/
+  ip = address:
+    let result = ip' address; in
+    if result != null then result else throw "Invalid IP address: ${toString address}";
 
   ipN = meta: rec {
     /**
@@ -221,7 +450,11 @@ rec {
       - `deviceParts`: A list of integers representing the device part of the IP address.
       - `device`: The device part of the IP address as string.
       - `deviceNoMask`: The device part of the IP address without trailing /mask as a string.
+      - `networkMaskParts`: A list of integers representing the network mask for the given CIDR mask.
+      - `networkMask`: The network mask as a string.
+      - `networkMaskNoMask`: The network mask without trailing /mask as a string.
       - `mask`: The CIDR mask as an integer.
+      - `_meta`: Information about the IP type
 
       If the input is invalid, it will return `null`
 
@@ -269,7 +502,11 @@ rec {
         deviceParts = devicePart;
         device = compose devicePart;
         deviceNoMask = composeNoMask devicePart;
+        networkMaskParts = networkMask;
+        networkMask = compose networkMask;
+        networkMaskNoMask = composeNoMask networkMask;
         mask = maskInt;
+        _meta = meta;
       } else null;
 
     /**
@@ -290,6 +527,9 @@ rec {
       - `deviceParts`: A list of integers representing the device part of the IP address.
       - `device`: The device part of the IP address as string.
       - `deviceNoMask`: The device part of the IP address without trailing /mask as a string.
+      - `networkMaskParts`: A list of integers representing the network mask for the given CIDR mask.
+      - `networkMask`: The network mask as a string.
+      - `networkMaskNoMask`: The network mask without trailing /mask as a string.
       - `mask`: The CIDR mask as an integer.
       If the input is invalid, it will throw an error.
 
@@ -410,34 +650,6 @@ rec {
       in
       result != null && result.address == val;
 
-    types.ip = lib.mkOptionType {
-      name = meta.name;
-      description = meta.description;
-      descriptionClass = "noun";
-      check = check;
-    };
-
-    types.ipNoMask = lib.mkOptionType {
-      name = "${meta.name}NoMask";
-      description = "${meta.description} without trailing /mask";
-      descriptionClass = "noun";
-      check = checkNoMask;
-    };
-
-    types.ipExplicitMask = lib.mkOptionType {
-      name = "${meta.name}ExplicitMask";
-      description = "${meta.description} with explicit mask";
-      descriptionClass = "noun";
-      check = checkWithMask;
-    };
-
-    types.ipNetwork = lib.mkOptionType {
-      name = "${meta.name}Network";
-      description = "Normalized network part of an ${meta.description}";
-      descriptionClass = "noun";
-      check = checkNormalizedNetwork;
-    };
-
     inherit meta;
   };
 
@@ -471,46 +683,7 @@ rec {
     partsToStr = ipGapJoin ip6.meta; # Function to convert a list of components to a string representation
   };
 
-  /**
-    A function that takes an IP address and returns the appropriate interface of functions to process it.
-
-    # Input
-    `address` : An IP address, which can be either an IPv4 or IPv6 address.
-
-    # Output
-    The ip4 or ip6 interface depending on the type of the input IP address.
-
-    # Errors
-    Throws an error if the input is not a valid IP address.
-
-    # Type
-    ```nix
-    String -> { ... }
-    ```
-    **/
-  ip = address:
-    if ip4.check address then
-      ip4
-    else if ip6.check address then
-      ip6
-    else
-      throw "Invalid IP address: ${toString address}";
-
-  types = {
-    ip = lib.types.oneOf [ ip4.types.ip ip6.types.ip ];
-    ip4 = ip4.types.ip;
-    ip6 = ip6.types.ip;
-
-    ipNetwork = lib.types.oneOf [ ip4.types.ipNetwork ip6.types.ipNetwork ];
-    ip4Network = ip4.types.ipNetwork;
-    ip6Network = ip6.types.ipNetwork;
-
-    ipNoMask = lib.types.oneOf [ ip4.types.ipNoMask ip6.types.ipNoMask ];
-    ip4NoMask = ip4.types.ipNoMask;
-    ip6NoMask = ip6.types.ipNoMask;
-
-    ipExplicitMask = lib.types.oneOf [ ip4.types.ipExplicitMask ip6.types.ipExplicitMask ];
-    ip4ExplicitMask = ip4.types.ipExplicitMask;
-    ip6ExplicitMask = ip6.types.ipExplicitMask;
-  };
+  types = import ./types.nix (inputs // {
+    inherit ip4 ip6 partsBitAnd;
+  });
 }
