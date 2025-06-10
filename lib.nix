@@ -590,11 +590,11 @@ rec {
       String -> Bool
       ```
       */
-    checkNormalizedNetwork =
+    checkNormalizedNetwork = val:
       let
         result = decompose' val;
       in
-      val: result != null && result.addressInt == result.networkPartInt;
+      result != null && result.addressParts == result.networkParts;
 
     /**
       Checks if the given value is a valid IP address in CIDR notation.
@@ -632,18 +632,18 @@ rec {
       result != null && result.addressNoMask == val;
 
     /**
-        Checks if the given value is a valid IP address in CIDR notation with trailing /mask.
-    
-        # Input
-        `val` : A string representing the IP address in CIDR notation, e.g. "1.2.3.4/32"
+      Checks if the given value is a valid IP address in CIDR notation with trailing /mask.
+  
+      # Input
+      `val` : A string representing the IP address in CIDR notation, e.g. "1.2.3.4/32"
 
-        # Output
-        A boolean indicating whether the input is a valid IP address in CIDR notation with trailing /mask.
-        # Type
-        ```nix
-        String -> Bool
-        ```
-        */
+      # Output
+      A boolean indicating whether the input is a valid IP address in CIDR notation with trailing /mask.
+      # Type
+      ```nix
+      String -> Bool
+      ```
+      */
     checkWithMask = val:
       let
         result = decompose' val;
