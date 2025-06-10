@@ -30,7 +30,7 @@ let
     merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
-  ipNetworkType = mkOptionType {
+  ipNetworkType = interface: mkOptionType {
     name = "${interface.meta.name}Network";
     description = "${interface.meta.description}, normalized network address";
     descriptionClass = "nonRestrictiveClause";
