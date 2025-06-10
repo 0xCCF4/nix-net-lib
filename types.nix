@@ -14,7 +14,7 @@ let
     merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
-  ipNoMask = interface: mkOptionType {
+  ipNoMaskType = interface: mkOptionType {
     name = "${interface.meta.name}NoMask";
     description = "${interface.meta.description}, without trailing /mask";
     descriptionClass = "nonRestrictiveClause";
@@ -22,7 +22,7 @@ let
     merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
-  ipExplicitMask = interface: mkOptionType {
+  ipExplicitMaskType = interface: mkOptionType {
     name = "${interface.meta.name}ExplicitMask";
     description = "${interface.meta.description}, with explicit /mask set";
     descriptionClass = "nonRestrictiveClause";
@@ -30,7 +30,7 @@ let
     merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
-  ipNetwork = mkOptionType {
+  ipNetworkType = mkOptionType {
     name = "${interface.meta.name}Network";
     description = "${interface.meta.description}, normalized network address";
     descriptionClass = "nonRestrictiveClause";
@@ -38,7 +38,7 @@ let
     merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
-  # withinNetworkStrict = interface: networkAddress:
+  # withinNetworkStrictType = interface: networkAddress:
   #   let
   #     normalizedAddress = (decompose networkAddress).network;
   #   in
@@ -55,7 +55,7 @@ let
   #       validAddresses && masksEqual && relation == "equal";
   #   };
   # 
-  # withinNetwork = interface: networkAddress:
+  # withinNetworkType = interface: networkAddress:
   #   let
   #     normalizedAddress = (decompose networkAddress).network;
   #   in
@@ -74,13 +74,13 @@ let
 in
 rec
 {
-  ip = oneOf [ (ipType ip4) (ipType ip6) ];
-  ip4 = ipType ip4;
-  ip6 = ipType ip6;
+  ip = oneOf [ (ipTypeType ip4) (ipTypeType ip6) ];
+  ip4 = ipTypeType ip4;
+  ip6 = ipTypeType ip6;
 
-  ipNetwork = oneOf [ (ipNetwork ip4) (ipNetwork ip6) ];
-  ip4Network = ipNetwork ip4;
-  ip6Network = ipNetwork ip6;
+  ipNetwork = oneOf [ (ipNetworkType ip4) (ipNetworkType ip6) ];
+  ip4Network = ipNetworkType ip4;
+  ip6Network = ipNetworkType ip6;
 
   # ip4WithinNetworkStrict = withinNetworkStrict ip4;
   # ip6WithinNetworkStrict = withinNetworkStrict ip6;
@@ -88,11 +88,11 @@ rec
   # ip4WithinNetwork = withinNetwork ip4;
   # ip6WithinNetwork = withinNetwork ip6;
 
-  ipNoMask = oneOf [ (ipNoMask ip4) (ipNoMask ip6) ];
-  ip4NoMask = ipNoMask ip4;
-  ip6NoMask = ipNoMask ip6;
+  ipNoMask = oneOf [ (ipNoMaskType ip4) (ipNoMaskType ip6) ];
+  ip4NoMask = ipNoMaskType ip4;
+  ip6NoMask = ipNoMaskType ip6;
 
-  ipExplicitMask = oneOf [ (ipExplicitMask ip4) (ipExplicitMask ip6) ];
-  ip4ExplicitMask = ipExplicitMask ip4;
-  ip6ExplicitMask = ipExplicitMask ip6;
+  ipExplicitMask = oneOf [ (ipExplicitMaskType ip4) (ipExplicitMaskType ip6) ];
+  ip4ExplicitMask = ipExplicitMaskType ip4;
+  ip6ExplicitMask = ipExplicitMaskType ip6;
 }
