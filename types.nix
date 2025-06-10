@@ -72,7 +72,6 @@ let
   #       validAddresses && masksEqual && (relation == "subset" || relation == "equal");
   #   };
 in
-rec
 {
   ip = oneOf [ (ipType ip4) (ipType ip6) ];
   ip4 = ipType ip4;
