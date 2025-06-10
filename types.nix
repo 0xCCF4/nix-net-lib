@@ -74,9 +74,9 @@ let
 in
 rec
 {
-  ip = oneOf [ (ipTypeType ip4) (ipTypeType ip6) ];
-  ip4 = ipTypeType ip4;
-  ip6 = ipTypeType ip6;
+  ip = oneOf [ (ipType ip4) (ipType ip6) ];
+  ip4 = ipType ip4;
+  ip6 = ipType ip6;
 
   ipNetwork = oneOf [ (ipNetworkType ip4) (ipNetworkType ip6) ];
   ip4Network = ipNetworkType ip4;
