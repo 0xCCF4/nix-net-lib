@@ -11,7 +11,6 @@ let
     description = interface.meta.description;
     descriptionClass = "noun";
     check = interface.check;
-    merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
   ipNoMaskType = interface: mkOptionType {
@@ -19,7 +18,6 @@ let
     description = "${interface.meta.description}, without trailing /mask";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkNoMask;
-    merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
   ipExplicitMaskType = interface: mkOptionType {
@@ -27,7 +25,6 @@ let
     description = "${interface.meta.description}, with explicit /mask set";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkWithMask;
-    merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
   ipNetworkType = interface: mkOptionType {
@@ -35,7 +32,6 @@ let
     description = "${interface.meta.description}, normalized network address";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkNormalizedNetwork;
-    merge = loc: defs: mergeEqualOption loc (map normalize defs);
   };
 
   # withinNetworkStrictType = interface: networkAddress:
