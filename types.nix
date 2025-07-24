@@ -11,7 +11,7 @@ let
     description = interface.meta.description;
     descriptionClass = "noun";
     check = interface.check;
-    merge = options.mergeEqualOptions;
+    merge = options.mergeEqualOption;
   };
 
   ipNoMaskType = interface: mkOptionType {
@@ -19,7 +19,7 @@ let
     description = "${interface.meta.description}, without trailing /mask";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkNoMask;
-    merge = options.mergeEqualOptions;
+    merge = options.mergeEqualOption;
   };
 
   ipExplicitMaskType = interface: mkOptionType {
@@ -27,7 +27,7 @@ let
     description = "${interface.meta.description}, with explicit /mask set";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkWithMask;
-    merge = options.mergeEqualOptions;
+    merge = options.mergeEqualOption;
   };
 
   ipNetworkType = interface: mkOptionType {
@@ -35,7 +35,7 @@ let
     description = "${interface.meta.description}, normalized network address";
     descriptionClass = "nonRestrictiveClause";
     check = interface.checkNormalizedNetwork;
-    merge = options.mergeEqualOptions;
+    merge = options.mergeEqualOption;
   };
 
   # withinNetworkStrictType = interface: networkAddress:
