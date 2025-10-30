@@ -278,7 +278,8 @@
 
           allEqual = list: all (x: x == head list) list;
 
-          zipped = attrsets.zipAttrs [ expression expected ];
+          zipped = if typeOf expression == "set" then attrsets.zipAttrs [ expression expected ] else
+          throw "Test ${toString (acc+1)} failed: '${description}'. Cannot compare types '${toJSON expression}' and '${toJSON expected}'.";
           onlyDifference = attrsets.filterAttrs (k: v: (!(allEqual v) || length v != 2) && (head (strings.stringToCharacters k) != "_")) zipped;
 
           differenceSet = attrNames onlyDifference;
