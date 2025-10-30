@@ -324,6 +324,53 @@
           expected = "superset";
           description = "Subnet relation between two IPv4 addresses should return superset";
         }
+
+        {
+          expression = assignAddress' "fe80::/64" 2;
+          expected = "fe80::2/64";
+          description = "Check if ip6 assignAddress works";
+        }
+        {
+          expression = assignAddress' "1.1.1.0/24" 0;
+          expected = "1.1.1.0/24";
+          description = "Calculate the zero-th address in the subnet";
+        }
+        {
+          expression = assignAddress' "1.1.1.55/24" 0;
+          expected = "1.1.1.0/24";
+          description = "Calculate the zero-th address in the subnet";
+        }
+        {
+          expression = assignAddress' "1.1.1.0/24" 2;
+          expected = "1.1.1.2/24";
+          description = "Calculate the n-th address in the subnet";
+        }
+        {
+          expression = assignAddress' "1.1.1.0/24" 6;
+          expected = "1.1.1.6/24";
+          description = "Calculate the n-th address in the subnet";
+        }
+        {
+          expression = assignAddress' "1.1.1.0/24" 400;
+          expected = null;
+          description = "Calculate the n-th address in the subnet, out-of-bounds";
+        }
+        {
+          expression = assignAddress' "1.1.1.128/25" 2;
+          expected = "1.1.1.130/25";
+          description = "Calculate the n-th address in the subnet";
+        }
+        {
+          expression = assignAddress' "1.1.0.0/16" 256;
+          expected = "1.1.1.0/16";
+          description = "Calculate the n-th address in the subnet overflowing octet";
+        }
+
+        {
+          expression = assignAddress' "1.1.0.0/16" 258;
+          expected = "1.1.1.2/16";
+          description = "Calculate the n-th address in the subnet overflowing octet";
+        }
       ];
     in
     foldl

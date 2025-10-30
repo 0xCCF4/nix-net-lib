@@ -62,6 +62,12 @@ options = {
 };
 ```
 
+## Example: Calculating a network address from index
+```nix
+lib.net.assignAddress "10.0.0.0/16" 300
+```
+
+
 ## API Reference
 See [lib.nix](lib.nix) for the full documentation.
 
@@ -135,6 +141,23 @@ Like `laysWithinSubnet'`, but throws on invalid input.
 
 - **Type:** `String -> String -> Bool`
 - **Example:** `laysWithinSubnet "1.2.3.4/24" "1.2.0.0/16" # true`
+
+---
+
+### ``assignAddress'
+Calculates the n-th address in the given subnet.
+
+- **Type:** `String -> Int -> String | null`
+- **Example:** `assignAddress' "10.10.0.0/16" 500`
+
+---
+
+### ``assignAddress
+Like `assignAddress'`, but throws on invalid input or if the index is too large for the subnet.
+
+- **Type:** `String -> Int -> String`
+- **Example:** `assignAddress' "10.10.0.0/16" 500`
+
 
 ---
 

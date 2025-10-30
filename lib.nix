@@ -336,6 +336,81 @@ rec {
     in if result != null then result else throw "Invalid IP address: ${toString address}";
 
   /**
+    A function that calculates the n-th address in the given network.
+
+    # Inputs
+    `network` : An IP address representing a network in CIDR notation.
+    `index` : An integer representing the index of the desired address within the network.
+
+    # Output
+    A string representing the n-th address in the given network, or `null` if the input is invalid or the index is out of range.
+
+    # Type
+    ```nix
+    String -> Int -> String | null
+    ```
+  */
+  assignAddress' = network: index:
+    let
+      ipInterface = ip' network;
+      decomposed = ipInterface.decompose' network;
+      networkParts = decomposed.networkParts;
+      mask = decomposed.mask;
+
+      addressParts = imap0
+        (i: part:
+          let
+            reversedI = ipInterface.meta.components - 1 - i;
+            availableBits = ipInterface.meta.componentBitWidth - (min ipInterface.meta.componentBitWidth (max 0 (mask - i * ipInterface.meta.componentBitWidth)));
+
+            indexShiftAmount = reversedI * ipInterface.meta.componentBitWidth;
+            offset = index / (pow 2 indexShiftAmount);
+
+            data =
+              if indexShiftAmount >= 64 then
+                {
+                  offset = 0;
+                  bits = 0;
+                }
+              else
+                {
+                  offset = mod offset (ipInterface.meta.componentMask + 1);
+                  bits = availableBits;
+                };
+          in
+          if data.offset >= pow 2 availableBits then
+            null
+          else
+            bitOr part data.offset
+        )
+        networkParts;
+
+      address = ipInterface.composeStr addressParts mask;
+
+      result = if any (x: x == null) addressParts then null else address;
+    in
+    if ipInterface != null && decomposed != null then result else null;
+
+  /**
+    A function that calculates the n-th address in the given network.
+
+    # Inputs
+    `network` : An IP address representing a network in CIDR notation.
+    `index` : An integer representing the index of the desired address within the network.
+
+    # Output
+    A string representing the n-th address in the given network, or throws an error if the input is invalid or the index is out of range.
+
+    # Type
+    ```nix
+    String -> Int -> String
+    ```
+  */
+  assignAddress = network: index:
+    let result = assignAddress' network index; in
+    if result != null then result else throw "Invalid input or index out of range: ${toString network} with index ${toString index}";
+
+  /**
     A function that takes an IP address and returns the appropriate interface of functions to process it, or null if invalid.
 
     # Input
