@@ -187,6 +187,63 @@
           description = "Decomposing a valid IPv4 address";
         }
         {
+          expression = ip6.decompose' "fe80::/64";
+          expected = {
+            addressParts = [ 65152 0 0 0 0 0 0 0 ];
+            address = "fe80::/64";
+            addressNoMask = "fe80::";
+            networkParts = [ 65152 0 0 0 0 0 0 0 ];
+            network = "fe80::/64";
+            networkNoMask = "fe80::";
+            deviceParts = [ 0 0 0 0 0 0 0 0 ];
+            device = "::/64";
+            deviceNoMask = "::";
+            networkMaskParts = [ 65535 65535 65535 65535 0 0 0 0 ];
+            networkMask = "ffff:ffff:ffff:ffff::/64";
+            networkMaskNoMask = "ffff:ffff:ffff:ffff::";
+            mask = 64;
+          };
+          description = "Decomposing a valid IPv6 address with trailing ::";
+        }
+        {
+          expression = ip6.decompose' "::1/128";
+          expected = {
+            addressParts = [ 0 0 0 0 0 0 0 1 ];
+            address = "::1/128";
+            addressNoMask = "::1";
+            networkParts = [ 0 0 0 0 0 0 0 1 ];
+            network = "::1/128";
+            networkNoMask = "::1";
+            deviceParts = [ 0 0 0 0 0 0 0 0 ];
+            device = "::/128";
+            deviceNoMask = "::";
+            networkMaskParts = [ 65535 65535 65535 65535 65535 65535 65535 65535 ];
+            networkMask = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128";
+            networkMaskNoMask = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff";
+            mask = 128;
+          };
+          description = "Decomposing a valid IPv6 address with leading ::";
+        }
+        {
+          expression = ip6.decompose' "::/64";
+          expected = {
+            addressParts = [ 0 0 0 0 0 0 0 0 ];
+            address = "::/64";
+            addressNoMask = "::";
+            networkParts = [ 0 0 0 0 0 0 0 0 ];
+            network = "::/64";
+            networkNoMask = "::";
+            deviceParts = [ 0 0 0 0 0 0 0 0 ];
+            device = "::/64";
+            deviceNoMask = "::";
+            networkMaskParts = [ 65535 65535 65535 65535 0 0 0 0 ];
+            networkMask = "ffff:ffff:ffff:ffff::/64";
+            networkMaskNoMask = "ffff:ffff:ffff:ffff::";
+            mask = 64;
+          };
+          description = "Decomposing a valid IPv6 address of all zeros";
+        }
+        {
           expression = ip6.decompose' "33--d";
           expected = null;
           description = "Invalid IP address should return null";

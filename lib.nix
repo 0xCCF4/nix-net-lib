@@ -26,12 +26,28 @@ let
       gaps = filter (part: part.fst == "") indexedParts;
 
       gapIndex = (head gaps).snd;
+      gapIndex' = (last gaps).snd;
 
       lstBeforeGap = lists.sublist 0 gapIndex parts;
-      lstAfterGap = lists.sublist (gapIndex + 1) (length parts) parts;
-      lstFiller = genList (i: "0") (meta.components - length parts + 1);
+      lstAfterGap = map (x: if x == "" then "0" else x) (lists.sublist (gapIndex + 1) (length parts) parts);
+      lstFiller = genList (i: "0") (meta.components - length lstAfterGap - length lstBeforeGap);
     in
-    if length gaps > 1 then
+    if length gaps == 2 then
+      if (head gaps).snd + 1 == (last gaps).snd && all (x: x.fst == "") (lists.sublist (head gaps).snd (length gaps) indexedParts) then
+      # :: at the end
+        lstBeforeGap ++ lstFiller ++ lstAfterGap
+      else if (head gaps).snd == 0 && (last gaps).snd == 1 then
+      # :: at the beginning
+        lstFiller ++ lstAfterGap
+      else
+        null
+    else if length gaps == 3 then
+      if (head gaps).snd == 0 && (head (tail gaps)).snd == 1 && (last gaps).snd == 2 && all (x: x.fst == "") (lists.sublist 0 3 indexedParts) then
+      # :: null address
+        genList (i: "0") meta.components
+      else
+        null
+    else if length gaps > 1 then
       null
     else if length gaps == 0 then
       parts
@@ -470,7 +486,7 @@ rec {
         parts = splitString "/" val;
         address = head parts;
         mask = if length parts > 1 then last parts else toString meta.bitWidth;
-        validMask = length parts <= 2 && checkInt mask && toInt mask >= 0 && toInt mask <= meta.bitWidth;
+        validMask = length parts <= 2 && checkInt mask && toInt mask >= 0 && toInt mask <= (meta.bitWidth * meta.components);
 
         chunkedAddress = meta.strToParts address;
         validAddressPart = chunkedAddress != null && all
@@ -492,7 +508,7 @@ rec {
         compose = adr: composeStr adr maskInt;
         composeNoMask = adr: composeStr adr null;
       in
-      if (validString && validMask && validAddressPart) then {
+      if validString && validMask && validAddressPart then {
         addressParts = chunks;
         address = compose chunks;
         addressNoMask = composeNoMask chunks;
