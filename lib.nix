@@ -199,7 +199,7 @@ rec {
     let
       result = subnetRelation' address network;
     in
-    if result != null then result else throw "Invalid IP addresses: ${toString address} and ${toString network}";
+    if result != null then result else throw "Invalid IP addresses: ${toJSON address} and ${toJSON network}";
 
   /**
      Checks whether the given IP address is within the given subnet.
@@ -338,7 +338,7 @@ rec {
     */
   decompose = address:
     let result = decompose' address;
-    in if result != null then result else throw "Invalid IP address: ${toString address}";
+    in if result != null then result else throw "Invalid IP address: ${toJSON address}";
 
   /**
     A function that calculates the n-th address in the given network.
@@ -413,7 +413,7 @@ rec {
   */
   assignAddress = network: index:
     let result = assignAddress' network index; in
-    if result != null then result else throw "Invalid input or index out of range: ${toString network} with index ${toString index}";
+    if result != null then result else throw "Invalid input or index out of range: ${toJSON network} with index ${toJSON index}";
 
   /**
     A function that takes an IP address and returns the appropriate interface of functions to process it, or null if invalid.
@@ -456,7 +456,7 @@ rec {
     **/
   ip = address:
     let result = ip' address; in
-    if result != null then result else throw "Invalid IP address: ${toString address}";
+    if result != null then result else throw "Invalid IP address: ${toJSON address}";
 
   ipN = meta: rec {
     /**
@@ -636,7 +636,7 @@ rec {
       */
     decompose = val:
       let result = decompose' val; in
-      if result != null then result else throw "Invalid ${meta.description}: ${toString val}";
+      if result != null then result else throw "Invalid ${meta.description}: ${toJSON val}";
 
     /**
       Checks if the given value is a valid IP address represented as an list of integers.
