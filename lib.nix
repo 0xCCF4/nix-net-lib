@@ -251,9 +251,14 @@ rec {
     */
   laysWithinSubnet = address: network:
     let
-      result = laysWithinSubnet' address network;
+      result = subnetRelation' address network;
     in
-    if result != null then result else throw "Invalid IP addresses: ${toString address} and ${toString network}";
+    if result != null then (
+      if result == "equal" || result == "subset" then
+        true
+      else
+        false
+    ) else throw "Invalid IP addresses: ${toJSON address} and ${toJSON network}";
 
 
   /**
