@@ -10,49 +10,53 @@ let
     else
       2 * (rep2Add (mask - 1) val) + val;
 
-  checkInt = val:
-    if typeOf val == "int" then
-      true
-    else if typeOf val == "string" then
-      match "[0-9]+" val != null
-    else
-      false;
-  checkHex = val: match "^[0-9a-fA-F]+$" val != null;
+  # Decimal number of at most three digits, without leading zeros. Used for IPv4 octets
+  # (RFC 6943 3.1.1: leading zeros are ambiguous, they may be read as octal) and masks.
+  # The length limit also keeps `toInt` from overflowing or throwing.
+  checkDecimal = val: typeOf val == "string" && match "0|[1-9][0-9]{0,2}" val != null;
+  # RFC 4291 2.2.1: an IPv6 component has one to four hexadecimal digits
+  checkHex = val: match "[0-9a-fA-F]{1,4}" val != null;
 
+  # Splits an address with at most one "::" into its components, or returns null.
+  # "::" stands for one or more zero components (RFC 4291 2.2.2). Empty components
+  # outside of "::" (e.g. ":1:2:3:4:5:6:7" or "1:::2") are rejected. The number of
+  # components is only checked here if "::" is present.
   ipGapSplit = meta: str:
     let
-      parts = splitString meta.componentSeparator str;
-      indexedParts = lists.zipLists parts (genList (i: i) (length parts));
-      gaps = filter (part: part.fst == "") indexedParts;
+      pieces = splitString "${meta.componentSeparator}${meta.componentSeparator}" str;
+      splitPiece = piece: if piece == "" then [ ] else splitString meta.componentSeparator piece;
 
-      gapIndex = (head gaps).snd;
-      gapIndex' = (last gaps).snd;
-
-      lstBeforeGap = lists.sublist 0 gapIndex parts;
-      lstAfterGap = map (x: if x == "" then "0" else x) (lists.sublist (gapIndex + 1) (length parts) parts);
-      lstFiller = genList (i: "0") (meta.components - length lstAfterGap - length lstBeforeGap);
+      lstBeforeGap = splitPiece (head pieces);
+      lstAfterGap = splitPiece (last pieces);
+      fillerLength = meta.components - length lstBeforeGap - length lstAfterGap;
     in
-    if length gaps == 2 then
-      if (head gaps).snd + 1 == (last gaps).snd && all (x: x.fst == "") (lists.sublist (head gaps).snd (length gaps) indexedParts) then
-      # :: at the end
-        lstBeforeGap ++ lstFiller ++ lstAfterGap
-      else if (head gaps).snd == 0 && (last gaps).snd == 1 then
-      # :: at the beginning
-        lstFiller ++ lstAfterGap
-      else
-        null
-    else if length gaps == 3 then
-      if (head gaps).snd == 0 && (head (tail gaps)).snd == 1 && (last gaps).snd == 2 && all (x: x.fst == "") (lists.sublist 0 3 indexedParts) then
-      # :: null address
-        genList (i: "0") meta.components
-      else
-        null
-    else if length gaps > 1 then
+    if length pieces == 1 then
+      splitString meta.componentSeparator str
+    else if length pieces > 2 || any (part: part == "") (lstBeforeGap ++ lstAfterGap) || fillerLength < 1 then
       null
-    else if length gaps == 0 then
-      parts
     else
-      lstBeforeGap ++ lstFiller ++ lstAfterGap;
+      lstBeforeGap ++ genList (i: "0") fillerLength ++ lstAfterGap;
+
+  # Replaces a trailing dotted-quad IPv4 address in an IPv6 address by two hexadecimal
+  # components (RFC 4291 2.2.3, e.g. "::ffff:192.0.2.1" -> "::ffff:c000:201"),
+  # returns null if the IPv4 part is invalid.
+  ip6EmbeddedIp4 = ip4: str:
+    let
+      parts = splitString ":" str;
+      ip4Part = last parts;
+      ip4Decomposed = ip4.decompose' ip4Part;
+      ip4Parts = ip4Decomposed.addressParts;
+      hex = a: b: toLower (trivial.toHexString (a * 256 + b));
+    in
+    if !(hasInfix "." ip4Part) then
+      str
+    else if length parts < 2 || ip4Decomposed == null then
+      null
+    else
+      concatStringsSep ":" (init parts ++ [
+        (hex (elemAt ip4Parts 0) (elemAt ip4Parts 1))
+        (hex (elemAt ip4Parts 2) (elemAt ip4Parts 3))
+      ]);
 
   ipGapJoin = meta: parts:
     let
@@ -69,11 +73,14 @@ let
         ) [ ]
         (map (x: { value = x.fst; index = x.snd; }) (lists.zipLists parts (genList (i: i) meta.components)));
 
+      # RFC 5952 4.2.2: "::" must not shorten a single zero component
+      compressibleGaps = filter (gap: gap.end > gap.start) findGaps;
+
       longestGap =
-        if length findGaps == 0 then
+        if length compressibleGaps == 0 then
           null
         else
-          foldl (acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc) (head findGaps) findGaps;
+          foldl (acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc) (head compressibleGaps) compressibleGaps;
 
       strParts = map meta.componentToString parts;
 
@@ -392,7 +399,12 @@ rec {
 
       address = ipInterface.composeStr addressParts mask;
 
-      result = if any (x: x == null) addressParts then null else address;
+      # The index must fit into the device part, the per-component check above misses
+      # indices beyond the address length (e.g. 2^32 in an IPv4 /0) and negative ones.
+      deviceBits = ipInterface.meta.bitWidth - mask;
+      validIndex = index >= 0 && (deviceBits >= 63 || index < pow 2 deviceBits);
+
+      result = if !validIndex || any (x: x == null) addressParts then null else address;
     in
     if ipInterface != null && decomposed != null then result else null;
 
@@ -414,6 +426,154 @@ rec {
   assignAddress = network: index:
     let result = assignAddress' network index; in
     if result != null then result else throw "Invalid input or index out of range: ${toJSON network} with index ${toJSON index}";
+
+  /**
+    Reads `length` bits of the hex string `hex`, starting at bit `offset` (most
+    significant bit first), as an integer.
+
+    # Type
+    ```nix
+    String -> Int -> Int -> Int
+    ```
+    */
+  hexBits = hex: offset: length: foldl
+    (acc: bit:
+      let
+        position = offset + bit;
+        nibble = trivial.fromHexString (substring (position / 4) 1 hex);
+      in
+      acc * 2 + (if bitAnd nibble (pow 2 (3 - mod position 4)) != 0 then 1 else 0))
+    0
+    (genList (bit: bit) length);
+
+  /**
+    Replaces the bits `from` (inclusive) to `to` (exclusive) of an address, given as
+    its list of components, with the bits of the hex string `hex` (most significant bit
+    first). Works per component, so any range of an IPv4 or IPv6 address can be set.
+
+    # Type
+    ```nix
+    { meta : { ... }, parts : [ Int ], from : Int, to : Int, hex : String } -> [ Int ]
+    ```
+    */
+  setBitsFromHex = { meta, parts, from, to, hex }: imap0
+    (index: part:
+      let
+        width = meta.componentBitWidth;
+        low = max from (index * width);
+        high = min to ((index + 1) * width);
+        length = high - low;
+        shift = (index + 1) * width - high;
+        mask = (pow 2 length - 1) * pow 2 shift;
+      in
+      if length <= 0 then
+        part
+      else
+        bitOr (bitAnd part (bitXor mask meta.componentMask)) (hexBits hex (low - from) length * pow 2 shift))
+    parts;
+
+  /**
+    Derives a stable address for a device from its name, inside an IPv4 or IPv6 network,
+    e.g. to address hosts, containers or VMs without keeping a list of hand-picked addresses.
+
+    All bits the network leaves free (its device part) are taken from
+    SHA-256(`salt` + ":address:" + `name`), so the same inputs always give the same address.
+
+    Distinct names may get the same address, the likelihood increases with less device bits.
+    Callers handing should assert that they are unique and usable (e.g. not a special address).
+
+    # Inputs
+    `salt` : A string mixed into the hash.
+    `network` : An IPv4 or IPv6 network in CIDR notation, e.g. a /64.
+    `name` : The name of the device.
+
+    # Output
+    The address, without mask.
+
+    # Example
+    ```nix
+    hashedAddress { salt = "s"; network = "2001:db8::/64"; name = "host-a"; }
+    # "2001:db8::f0a3:42e6:b7cf:1582"
+    ```
+
+    # Type
+    ```nix
+    { salt : String, network : String, name : String } -> String
+    ```
+    */
+  hashedAddress =
+    { salt
+    , network
+    , name
+    }:
+    let
+      decomposed = decompose network;
+      meta = decomposed._meta;
+      parts = setBitsFromHex {
+        inherit meta;
+        parts = decomposed.networkParts;
+        from = decomposed.mask;
+        to = meta.bitWidth;
+        hex = hashString "sha256" "${salt}:address:${name}";
+      };
+    in
+    (ip network).composeStr parts null;
+
+  /**
+    Derives a stable subnet for `name` out of a larger IPv4 or IPv6 network, e.g. one /64
+    per network or host out of a ULA /48.
+
+    The bits between the mask of `network` and `prefixLength` (the subnet ID) are taken
+    from SHA-256(`salt` + ":subnet:" + `name`), the remaining bits are zero. The same inputs
+    always give the same subnet.
+
+    Distinct names may get the same subnet, the likelihood increases with less device bits.
+    Callers handing should assert that they are unique/
+
+    # Inputs
+    `salt` : A string mixed into the hash.
+    `network` : An IPv4 or IPv6 network in CIDR notation.
+    `name` : The name the subnet is derived for.
+    `prefixLength` : The prefix length of the resulting subnet, longer than the mask of `network`.
+
+    # Output
+    The subnet in CIDR notation.
+
+    # Errors
+    Throws an error if `prefixLength` is not longer than the mask of `network` or exceeds the address length.
+
+    # Example
+    ```nix
+    hashedSubnet { salt = "s"; network = "fd12:3456:789a::/48"; name = "office"; prefixLength = 64; }
+    # "fd12:3456:789a:894d::/64"
+    ```
+
+    # Type
+    ```nix
+    { salt : String, network : String, name : String, prefixLength : Int } -> String
+    ```
+    */
+  hashedSubnet =
+    { salt
+    , network
+    , name
+    , prefixLength
+    }:
+    let
+      decomposed = decompose network;
+      meta = decomposed._meta;
+      parts = setBitsFromHex {
+        inherit meta;
+        parts = decomposed.networkParts;
+        from = decomposed.mask;
+        to = prefixLength;
+        hex = hashString "sha256" "${salt}:subnet:${name}";
+      };
+    in
+    if prefixLength <= decomposed.mask || prefixLength > meta.bitWidth then
+      throw "hashedSubnet: prefixLength ${toString prefixLength} must be longer than the mask ${toString decomposed.mask} of ${toJSON network} and at most ${toString meta.bitWidth}"
+    else
+      (ip network).composeStr parts prefixLength;
 
   /**
     A function that takes an IP address and returns the appropriate interface of functions to process it, or null if invalid.
@@ -566,10 +726,10 @@ rec {
         parts = splitString "/" val;
         address = head parts;
         mask = if length parts > 1 then last parts else toString meta.bitWidth;
-        validMask = length parts <= 2 && checkInt mask && toInt mask >= 0 && toInt mask <= (meta.bitWidth * meta.components);
+        validMask = length parts <= 2 && checkDecimal mask && toInt mask <= meta.bitWidth;
 
         chunkedAddress = meta.strToParts address;
-        validAddressPart = chunkedAddress != null && all
+        validAddressPart = chunkedAddress != null && length chunkedAddress == meta.components && all
           (part:
             let
               partInt = meta.componentFromString part;
@@ -757,7 +917,7 @@ rec {
     description = "IPv4 address"; # Description of the IP type
     name = "ip4"; # Name of the IP type
     bitWidth = 32; # Total bit width of an IPv4 address
-    componentIsValidString = checkInt; # Function to check if a string is a valid component
+    componentIsValidString = checkDecimal; # Function to check if a string is a valid component
     componentFromString = toInt; # Function to convert a component string to an integer
     componentToString = toString; # Function to convert a component integer to a string
     strToParts = splitString "."; # Function to split a string representation of an IP address into its components
@@ -775,7 +935,7 @@ rec {
     componentIsValidString = checkHex; # Function to check if a string is a valid component
     componentFromString = trivial.fromHexString; # Function to convert a component string to an integer
     componentToString = x: strings.toLower (trivial.toHexString x); # Function to convert a component integer to a string
-    strToParts = ipGapSplit ip6.meta; # Function to split a string representation of an IP address into its components
+    strToParts = str: let str' = ip6EmbeddedIp4 ip4 str; in if str' == null then null else ipGapSplit ip6.meta str'; # Function to split a string representation of an IP address into its components
     partsToStr = ipGapJoin ip6.meta; # Function to convert a list of components to a string representation
   };
 

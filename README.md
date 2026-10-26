@@ -68,6 +68,23 @@ lib.net.assignAddress "10.0.0.0/16" 300
 ```
 
 
+## Example: Deriving addresses and subnets from names
+Hand out stable subnets and addresses without keeping a list of them, e.g. one /64 per
+network out of a ULA /48 and one address per device in it:
+
+```nix
+let
+  salt = "<some value>"; # e.g. openssl rand -hex 32
+  network = lib.net.hashedSubnet { inherit salt; network = "fd12:3456:789a::/48"; name = "office"; prefixLength = 64; };
+  # "fd12:3456:789a:xxxx::/64"
+in
+lib.net.hashedAddress { inherit salt network; name = "printer"; }
+# "fd12:3456:789a:xxxx:xxxx:xxxx:xxxx:xxxx"
+```
+
+The free bits (the subnet ID, respectively the device part) are taken from a SHA-256 hash of the
+salt and the name, so the same inputs always give the same result. Works for IPv4 and IPv6 and any mask.
+
 ## API Reference
 See [lib.nix](lib.nix) for the full documentation.
 
@@ -161,6 +178,25 @@ Like `assignAddress'`, but throws on invalid input or if the index is too large 
 
 ---
 
+### `hashedAddress`
+Derives a stable address for a device from its name inside an IPv4 or IPv6 network: all device
+bits are taken from SHA-256(`salt` + ":address:" + `name`). The result may collide with other
+names or be an address with a special meaning (e.g. the network address) in small networks.
+
+- **Type:** `{ salt : String, network : String, name : String } -> String`
+- **Example:** `hashedAddress { salt = "s"; network = "2001:db8::/64"; name = "host-a"; } # "2001:db8::f0a3:42e6:b7cf:1582"`
+
+---
+
+### `hashedSubnet`
+Derives a stable subnet for a name out of a larger IPv4 or IPv6 network: the bits between the
+network's mask and `prefixLength` are taken from SHA-256(`salt` + ":subnet:" + `name`).
+
+- **Type:** `{ salt : String, network : String, name : String, prefixLength : Int } -> String`
+- **Example:** `hashedSubnet { salt = "s"; network = "fd12:3456:789a::/48"; name = "office"; prefixLength = 64; } # "fd12:3456:789a:894d::/64"`
+
+---
+
 ### `calculateDeviceMaskParts`
 Computes the device mask for a given CIDR mask.
 
@@ -225,6 +261,7 @@ Checks if a string is a normalized network address.
 
 ### `ipX.check`
 Checks if a string is a valid IP address in CIDR notation.
+Accepts IPv4 dotted quads without leading zeros, all IPv6 text forms of RFC 4291 2.2 (including an embedded IPv4 address like `::ffff:192.0.2.1`), and masks of 0 to 32 (IPv4) or 0 to 128 (IPv6). Zone IDs (`fe80::1%eth0`) are rejected.
 
 - **Type:** `String -> Bool`
 - **Example:** `check "192.168.1.1/24" # true`

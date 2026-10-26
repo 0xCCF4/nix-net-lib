@@ -371,6 +371,116 @@
           expected = "1.1.1.2/16";
           description = "Calculate the n-th address in the subnet overflowing octet";
         }
+        {
+          expression = ip6.composeStr [ 8193 3512 0 1 1 1 1 1 ] null;
+          expected = "2001:db8:0:1:1:1:1:1";
+          description = "A single zero component is not shortened to :: (RFC 5952 4.2.2)";
+        }
+        {
+          expression = hashedAddress { salt = "s"; network = "2001:db8::/64"; name = "host-a"; };
+          expected = "2001:db8::f0a3:42e6:b7cf:1582";
+          description = "Check if hashedAddress fills the device part of an IPv6 /64";
+        }
+        {
+          expression = hashedAddress { salt = "s"; network = "2001:db8::/50"; name = "host-a"; };
+          expected = "2001:db8:0:3c28:d0b9:adf3:c560:bae9";
+          description = "Check if hashedAddress works for masks that are no multiple of 16";
+        }
+        {
+          expression = hashedAddress { salt = "s"; network = "198.51.100.0/22"; name = "host-a"; };
+          expected = "198.51.103.194";
+          description = "Check if hashedAddress works for IPv4";
+        }
+        {
+          expression = hashedSubnet { salt = "s"; network = "fd12:3456:789a::/48"; name = "office"; prefixLength = 64; };
+          expected = "fd12:3456:789a:894d::/64";
+          description = "Check if hashedSubnet works for a /64 out of a /48";
+        }
+        {
+          expression = hashedSubnet { salt = "s"; network = "fd12:3456:789a::/48"; name = "office"; prefixLength = 57; };
+          expected = "fd12:3456:789a:8900::/57";
+          description = "Check if hashedSubnet works for prefix lengths that are no multiple of 16";
+        }
+        {
+          expression = hashedSubnet { salt = "s"; network = "10.0.0.0/8"; name = "office"; prefixLength = 20; };
+          expected = "10.137.64.0/20";
+          description = "Check if hashedSubnet works for IPv4";
+        }
+        {
+          expression = map ip6.check [ "00001::" "02001:db8::1" ];
+          expected = [ false false ];
+          description = "IPv6 components have at most four hex digits (RFC 4291 2.2.1)";
+        }
+        {
+          expression = ip6.check "ffffffffffffffffff::";
+          expected = false;
+          description = "Overlong IPv6 components are rejected instead of overflowing (RFC 4291 2.2.1)";
+        }
+        {
+          expression = map ip6.check [ "1:::2" ":1:2:3:4:5:6:7" "1:2:3:4:5:6:7:" ":::" ];
+          expected = [ false false false false ];
+          description = "Empty IPv6 components outside of :: are rejected (RFC 4291 2.2.2)";
+        }
+        {
+          expression = ip6.check "1:2:3:4::5:6:7:8";
+          expected = false;
+          description = ":: stands for at least one zero component, so at most seven others are allowed (RFC 4291 2.2.2)";
+        }
+        {
+          expression = (ip6.decompose "1:2:3:4:5:6:7::").addressNoMask;
+          expected = "1:2:3:4:5:6:7:0";
+          description = ":: may stand for a single zero component on input (RFC 4291 2.2.2), but is not emitted for it (RFC 5952 4.2.2)";
+        }
+        {
+          expression = map ip6.check [ "1:2:3" "1:2:3:4:5:6:7:8:9" ];
+          expected = [ false false ];
+          description = "IPv6 addresses without :: have exactly eight components (RFC 4291 2.2.1)";
+        }
+        {
+          expression = map ip4.check [ "1.2.3" "1.2.3.4.5" ];
+          expected = [ false false ];
+          description = "IPv4 addresses have exactly four octets (RFC 791 / RFC 6943 3.1.1)";
+        }
+        {
+          expression = map ip4.check [ "01.2.3.4" "1.2.3.04" "999999999999999999999.1.1.1" ];
+          expected = [ false false false ];
+          description = "IPv4 octets with leading zeros (ambiguous octal, RFC 6943 3.1.1) or overflowing values are rejected instead of throwing";
+        }
+        {
+          expression = map ip4.check [ "1.2.3.4/0" "1.2.3.4/32" "1.2.3.4/33" "1.2.3.4/100" "1.2.3.4/024" "1.2.3.4/99999999999999999999" ];
+          expected = [ true true false false false false ];
+          description = "IPv4 prefix lengths are 0 to 32 (RFC 4632 3.1), malformed ones are rejected instead of throwing";
+        }
+        {
+          expression = map ip6.check [ "::/0" "::/128" "::/129" "::/1024" ];
+          expected = [ true true false false ];
+          description = "IPv6 prefix lengths are 0 to 128 (RFC 4291 2.3)";
+        }
+        {
+          expression = map (s: (ip6.decompose s).address) [ "::ffff:192.0.2.1" "64:ff9b::192.0.2.1/96" "1:2:3:4:5:6:1.2.3.4" ];
+          expected = [ "::ffff:c000:201/128" "64:ff9b::c000:201/96" "1:2:3:4:5:6:102:304/128" ];
+          description = "IPv6 addresses with an embedded dotted-quad IPv4 address are accepted (RFC 4291 2.2.3)";
+        }
+        {
+          expression = map ip6.check [ "::ffff:01.2.3.4" "::ffff:1.2.3" "::1.2.3.4:5" "1:2:3:4:5:6:7:1.2.3.4" ];
+          expected = [ false false false false ];
+          description = "An embedded IPv4 address must be a valid dotted quad in the last 32 bits (RFC 4291 2.2.3)";
+        }
+        {
+          expression = map (assignAddress' "1.2.3.0/24") [ (-1) ];
+          expected = [ null ];
+          description = "assignAddress rejects negative indices";
+        }
+        {
+          expression = map (assignAddress' "0.0.0.0/0") [ 4294967295 4294967296 ];
+          expected = [ "255.255.255.255/0" null ];
+          description = "assignAddress rejects indices beyond the address length instead of wrapping around";
+        }
+        {
+          expression = map (assignAddress' "1.2.3.4/31") [ 0 1 2 ];
+          expected = [ "1.2.3.4/31" "1.2.3.5/31" null ];
+          description = "assignAddress in an IPv4 /31 (RFC 3021)";
+        }
       ];
     in
     foldl
