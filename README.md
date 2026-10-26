@@ -9,7 +9,7 @@ A nix library for parsing, validating and manipulating IPv4 and IPv6 addresses.
 - **Type support** for NixOS modules and options
 - **IPv6 compression support** use of compression operator `::` supported, output is canonical (RFC 5952)
 - **IPv4-mapped IPv6** addresses like `::ffff:1.2.3.4` are parsed and rendered in dotted form (RFC 5952 §5). Zone IDs (`fe80::1%eth0`) are not supported.
-- **Allocate** addresses and subnets by index or derived from names (hashing), check host ranges, classify addresses, build reverse DNS names
+- **Allocate** addresses and subnets by index or derived from names (hashing), check host ranges, classify addresses (private, link scope, documentation, globally reachable, multicast scope), build reverse DNS names
 
 ## Breaking changes
 - **`assignAddress` / `assignAddress'` return the address without mask**, like `hashedAddress`
@@ -581,6 +581,65 @@ IPv6 unique local address, fc00::/7. Always false for IPv4.
 
 ---
 
+### `multicastScope`
+Scope of a multicast address as a string, `null` for non-multicast addresses (including
+IPv4-mapped ones).
+
+- **IPv6** (RFC 4291 2.7, RFC 7346): taken from the scope field (4th hex digit), the flags in
+  the 3rd digit do not matter (`ff12::1` is `"link"`): `1` `"interface"`, `2` `"link"`,
+  `3` `"realm"`, `4` `"admin"`, `5` `"site"`, `8` `"organization"`, `e` `"global"`, `0` and
+  `f` `"reserved"`, everything else `"unassigned"`.
+- **IPv4** (by range): `224.0.0.0/24` (local network control, RFC 5771) is `"link"`,
+  `239.192.0.0/14` (organization local scope, RFC 2365) is `"organization"`, the rest of the
+  administratively scoped `239.0.0.0/8` (including the IPv4 local scope `239.255.0.0/16`,
+  the smallest administrative scope) is `"admin"`, everything else is `"global"`.
+
+- **Type:** `String -> String | null`
+- **Example:** `multicastScope "ff05::2" # "site"`, `multicastScope "224.0.0.251" # "link"`
+
+---
+
+### `isLinkScope`
+Link-local unicast (169.254.0.0/16, fe80::/10) or link-scope multicast (224.0.0.0/24, IPv6
+multicast with scope `2` and any flags, e.g. `ff02::1`, `ff12::1`).
+
+- **Type:** `String -> Bool`
+- **Example:** `isLinkScope "224.0.0.251" # true`
+
+---
+
+### `isDocumentation`
+192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24 (RFC 5737), 233.252.0.0/24 (MCAST-TEST-NET,
+RFC 6676), 2001:db8::/32 (RFC 3849) or 3fff::/20 (RFC 9637).
+
+- **Type:** `String -> Bool`
+- **Example:** `isDocumentation "3fff::1" # true`
+
+---
+
+### `isGlobal`
+Globally reachable per the "Globally Reachable" column of the IANA IPv4 and IPv6
+special-purpose address registries:
+
+- **IPv4 unicast:** everything outside the non-global blocks (`thisNetwork`, `private10`,
+  `sharedAddressSpace`, `loopback`, `linkLocal`, `private172`, `ietfProtocolAssignments`,
+  the documentation blocks, `private192`, `benchmarking`, `reserved`), but
+  `192.0.0.9` and `192.0.0.10` (PCP/TURN anycast) are global.
+- **IPv6 unicast:** only `2000::/3` and the NAT64 well-known prefix `64:ff9b::/96` can be
+  global, minus `2001::/23`, `2001:db8::/32`, `2002::/16` and `3fff::/20`; within `2001::/23`
+  `2001:1::1`, `2001:1::2`, `2001:1::3`, `2001:3::/32`, `2001:4:112::/48`, `2001:20::/28` and
+  `2001:30::/28` are global. IPv4-mapped addresses are never global.
+- Blocks marked "N/A" in the registries (Teredo `2001::/32`, 6to4 `2002::/16`) count as not
+  global.
+- **Multicast** (not covered by the registries): global if `multicastScope` is `"global"` and
+  it is no documentation address, so `ff0e::1` and `232.1.1.1` are global, `ff05::2`,
+  `224.0.0.251` and `239.1.1.1` are not.
+
+- **Type:** `String -> Bool`
+- **Example:** `isGlobal "2001:4860:4860::8888" # true`, `isGlobal "192.0.0.9" # true`, `isGlobal "100.64.0.1" # false`
+
+---
+
 ### `ipX.special`
 Well-known special-purpose networks of each family as normalized CIDR strings: the most
 important entries of the IANA special-purpose address registries (RFC 6890 and updates) plus
@@ -603,35 +662,62 @@ lib.net.inSubnet "::ffff:192.0.2.1" lib.net.ip6.special.ipv4Mapped # true
 | `linkLocal`               | `169.254.0.0/16`     | RFC 3927                                                           |
 | `private172`              | `172.16.0.0/12`      | RFC 1918                                                           |
 | `ietfProtocolAssignments` | `192.0.0.0/24`       | RFC 6890, contains e.g. DS-Lite, PCP/TURN anycast, NAT64 discovery |
+| `pcpAnycast`              | `192.0.0.9/32`       | RFC 7723, PCP anycast, globally reachable                          |
+| `turnAnycast`             | `192.0.0.10/32`      | RFC 8155, TURN anycast, globally reachable                         |
 | `documentation1`          | `192.0.2.0/24`       | RFC 5737, TEST-NET-1                                               |
+| `as112`                   | `192.31.196.0/24`    | RFC 7535, AS112-v4                                                 |
+| `amt`                     | `192.52.193.0/24`    | RFC 7450, Automatic Multicast Tunneling                            |
 | `private192`              | `192.168.0.0/16`     | RFC 1918                                                           |
+| `as112DirectDelegation`   | `192.175.48.0/24`    | RFC 7534, direct delegation AS112 service                          |
 | `benchmarking`            | `198.18.0.0/15`      | RFC 2544                                                           |
 | `documentation2`          | `198.51.100.0/24`    | RFC 5737, TEST-NET-2                                               |
 | `documentation3`          | `203.0.113.0/24`     | RFC 5737, TEST-NET-3                                               |
 | `multicast`               | `224.0.0.0/4`        | RFC 5771                                                           |
+| `localNetworkControl`     | `224.0.0.0/24`       | RFC 5771, link-scope multicast                                     |
+| `mcastTestNet`            | `233.252.0.0/24`     | RFC 6676, MCAST-TEST-NET (multicast documentation)                 |
+| `adminScoped`             | `239.0.0.0/8`        | RFC 2365, administratively scoped multicast                        |
+| `organizationLocal`       | `239.192.0.0/14`     | RFC 2365, IPv4 organization local scope                            |
+| `localScope`              | `239.255.0.0/16`     | RFC 2365, IPv4 local scope                                         |
 | `reserved`                | `240.0.0.0/4`        | RFC 1112                                                           |
 | `limitedBroadcast`        | `255.255.255.255/32` | RFC 919, lies within `reserved`                                    |
 
 **IPv6: `ip6.special`**
 
-| Name                      | Network             | Reference                                                      |
-| ------------------------- | ------------------- | -------------------------------------------------------------- |
-| `unspecified`             | `::/128`            | RFC 4291                                                       |
-| `loopback`                | `::1/128`           | RFC 4291                                                       |
-| `ipv4Mapped`              | `::ffff:0.0.0.0/96` | RFC 4291                                                       |
-| `nat64`                   | `64:ff9b::/96`      | RFC 6052, IPv4/IPv6 translation well-known prefix              |
-| `nat64Local`              | `64:ff9b:1::/48`    | RFC 8215, local-use IPv4/IPv6 translation                      |
-| `discardOnly`             | `100::/64`          | RFC 6666                                                       |
-| `ietfProtocolAssignments` | `2001::/23`         | RFC 2928, contains e.g. Teredo, benchmarking, PCP/TURN anycast |
-| `documentation`           | `2001:db8::/32`     | RFC 3849                                                       |
-| `sixToFour`               | `2002::/16`         | RFC 3056                                                       |
-| `documentation2`          | `3fff::/20`         | RFC 9637                                                       |
-| `uniqueLocal`             | `fc00::/7`          | RFC 4193                                                       |
-| `linkLocal`               | `fe80::/10`         | RFC 4291                                                       |
-| `multicast`               | `ff00::/8`          | RFC 4291                                                       |
+| Name                      | Network              | Reference                                                      |
+| ------------------------- | -------------------- | -------------------------------------------------------------- |
+| `unspecified`             | `::/128`             | RFC 4291                                                       |
+| `loopback`                | `::1/128`            | RFC 4291                                                       |
+| `ipv4Mapped`              | `::ffff:0.0.0.0/96`  | RFC 4291                                                       |
+| `ipv4Translated`          | `::ffff:0:0:0/96`    | RFC 2765 (SIIT), dropped by RFC 6145, not in the IANA registry |
+| `nat64`                   | `64:ff9b::/96`       | RFC 6052, IPv4/IPv6 translation well-known prefix              |
+| `nat64Local`              | `64:ff9b:1::/48`     | RFC 8215, local-use IPv4/IPv6 translation                      |
+| `discardOnly`             | `100::/64`           | RFC 6666                                                       |
+| `globalUnicast`           | `2000::/3`           | RFC 4291, global unicast                                       |
+| `ietfProtocolAssignments` | `2001::/23`          | RFC 2928, contains e.g. Teredo, benchmarking, PCP/TURN anycast |
+| `teredo`                  | `2001::/32`          | RFC 4380                                                       |
+| `pcpAnycast`              | `2001:1::1/128`      | RFC 7723, PCP anycast, globally reachable                      |
+| `turnAnycast`             | `2001:1::2/128`      | RFC 8155, TURN anycast, globally reachable                     |
+| `dnsSdSrpAnycast`         | `2001:1::3/128`      | RFC 9665, DNS-SD Service Registration Protocol anycast         |
+| `benchmarking`            | `2001:2::/48`        | RFC 5180                                                       |
+| `amt`                     | `2001:3::/32`        | RFC 7450, Automatic Multicast Tunneling, globally reachable    |
+| `as112`                   | `2001:4:112::/48`    | RFC 7535, AS112-v6, globally reachable                         |
+| `orchidV2`                | `2001:20::/28`       | RFC 7343, ORCHIDv2, globally reachable                         |
+| `droneRemoteId`           | `2001:30::/28`       | RFC 9374, Drone Remote ID (DET) prefix, globally reachable     |
+| `documentation`           | `2001:db8::/32`      | RFC 3849                                                       |
+| `sixToFour`               | `2002::/16`          | RFC 3056                                                       |
+| `as112DirectDelegation`   | `2620:4f:8000::/48`  | RFC 7534, direct delegation AS112 service                      |
+| `documentation2`          | `3fff::/20`          | RFC 9637                                                       |
+| `srv6Sid`                 | `5f00::/16`          | RFC 9602, SRv6 segment identifiers                             |
+| `uniqueLocal`             | `fc00::/7`           | RFC 4193                                                       |
+| `linkLocal`               | `fe80::/10`          | RFC 4291                                                       |
+| `multicast`               | `ff00::/8`           | RFC 4291                                                       |
+| `linkLocalMulticast`      | `ff02::/16`          | RFC 4291, link scope with flags 0 only, see `isLinkScope`      |
+| `solicitedNode`           | `ff02::1:ff00:0/104` | RFC 4291, solicited-node multicast                             |
 
-Blocks that lie within a listed block are left out, e.g. the PCP/TURN anycast and NAT64
-discovery addresses inside `192.0.0.0/24`; check against the containing block instead.
+Entries may be nested: `globalUnicast` contains the blocks from `ietfProtocolAssignments` to
+`documentation2`, `ietfProtocolAssignments` contains the individual assignments after it
+(some globally reachable, see `isGlobal`), and the multicast blocks contain the scoped ones. Inside `192.0.0.0/24` only the
+globally reachable PCP/TURN anycast addresses are listed.
 
 #### Formatting
 

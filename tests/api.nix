@@ -315,6 +315,398 @@ in
   (case "isMulticast fe80::" (isMulticast "fe80::") false)
   (fails "isMulticast throws for invalid input" (isMulticast "224.0.0"))
 
+  # multicastScope
+  (case "multicastScope IPv6 scopes ff00:: to ff0f::"
+    (genList (i: multicastScope "ff0${toLower (toHexString i)}::1") 16)
+    [
+      "reserved"
+      "interface"
+      "link"
+      "realm"
+      "admin"
+      "site"
+      "unassigned"
+      "unassigned"
+      "organization"
+      "unassigned"
+      "unassigned"
+      "unassigned"
+      "unassigned"
+      "unassigned"
+      "global"
+      "reserved"
+    ]
+  )
+  (case "multicastScope ignores the flags: ff12::1 is link" (multicastScope "ff12::1") "link")
+  (case "multicastScope ignores the flags: ff3e::8000:1 is global"
+    (multicastScope "ff3e:30:2001:db8::8000:1")
+    "global"
+  )
+  (case "multicastScope ignores the flags: fff5::1 is site" (multicastScope "fff5::1") "site")
+  (case "multicastScope ff05::2" (multicastScope "ff05::2") "site")
+  (case "multicastScope ff0e::" (multicastScope "ff0e::") "global")
+  (case "multicastScope solicited-node" (multicastScope "ff02::1:ff12:3456") "link")
+  (case "multicastScope ignores the mask" (multicastScope "ff02::1/8") "link")
+  (case "multicastScope 224.0.0.251" (multicastScope "224.0.0.251") "link")
+  (case "multicastScope 224.0.0.0" (multicastScope "224.0.0.0") "link")
+  (case "multicastScope 224.0.0.255" (multicastScope "224.0.0.255") "link")
+  (case "multicastScope 224.0.1.0" (multicastScope "224.0.1.0") "global")
+  (case "multicastScope 232.1.1.1 (SSM)" (multicastScope "232.1.1.1") "global")
+  (case "multicastScope 238.255.255.255" (multicastScope "238.255.255.255") "global")
+  (case "multicastScope 239.0.0.0" (multicastScope "239.0.0.0") "admin")
+  (case "multicastScope 239.191.255.255" (multicastScope "239.191.255.255") "admin")
+  (case "multicastScope 239.192.0.0" (multicastScope "239.192.0.0") "organization")
+  (case "multicastScope 239.195.255.255" (multicastScope "239.195.255.255") "organization")
+  (case "multicastScope 239.196.0.0" (multicastScope "239.196.0.0") "admin")
+  (case "multicastScope 239.255.255.250 (IPv4 local scope)" (multicastScope "239.255.255.250")
+    "admin"
+  )
+  (case "multicastScope ignores the mask of IPv4" (multicastScope "224.0.0.251/4") "link")
+  (case "multicastScope is null for unicast"
+    (map multicastScope [
+      "10.0.0.1"
+      "fe80::1"
+      "223.255.255.255"
+      "240.0.0.0"
+      "feff::"
+    ])
+    [
+      null
+      null
+      null
+      null
+      null
+    ]
+  )
+  (case "multicastScope is null for IPv4-mapped multicast" (multicastScope "::ffff:224.0.0.251") null)
+  (fails "multicastScope throws for invalid input" (multicastScope "ff02::1::1"))
+
+  # isLinkScope
+  (case "isLinkScope link-local unicast"
+    (map isLinkScope [
+      "169.254.0.1"
+      "fe80::1"
+      "febf:ffff::1/64"
+    ])
+    [
+      true
+      true
+      true
+    ]
+  )
+  (case "isLinkScope link-scope multicast"
+    (map isLinkScope [
+      "224.0.0.251"
+      "ff02::1"
+      "ff12::1"
+      "ff32::1"
+      "ff02::1:ff00:1"
+    ])
+    [
+      true
+      true
+      true
+      true
+      true
+    ]
+  )
+  (case "isLinkScope other scopes"
+    (map isLinkScope [
+      "224.0.1.1"
+      "ff01::1"
+      "ff05::2"
+      "ff0e::1"
+      "fec0::1"
+      "169.255.0.0"
+      "10.0.0.1"
+    ])
+    [
+      false
+      false
+      false
+      false
+      false
+      false
+      false
+    ]
+  )
+  (case "isLinkScope ignores the mask" (isLinkScope "ff02::1/128") true)
+  (case "isLinkScope IPv4-mapped"
+    (map isLinkScope [
+      "::ffff:169.254.0.1"
+      "::ffff:224.0.0.251"
+    ])
+    [
+      false
+      false
+    ]
+  )
+  (fails "isLinkScope throws for invalid input" (isLinkScope "fe80::1%eth0"))
+
+  # isDocumentation
+  (case "isDocumentation IPv4 ranges and boundaries"
+    (map isDocumentation [
+      "192.0.2.0"
+      "192.0.2.255"
+      "192.0.3.0"
+      "198.51.100.1"
+      "198.51.101.0"
+      "203.0.113.255"
+      "203.0.112.255"
+      "233.252.0.1"
+      "233.252.1.0"
+    ])
+    [
+      true
+      true
+      false
+      true
+      false
+      true
+      false
+      true
+      false
+    ]
+  )
+  (case "isDocumentation IPv6 ranges and boundaries"
+    (map isDocumentation [
+      "2001:db8::"
+      "2001:db8:ffff:ffff::1"
+      "2001:db9::"
+      "3fff::"
+      "3fff:fff:ffff::"
+      "3fff:1000::"
+      "3ffe::"
+    ])
+    [
+      true
+      true
+      false
+      true
+      true
+      false
+      false
+    ]
+  )
+  (case "isDocumentation ignores the mask"
+    (map isDocumentation [
+      "2001:db8::/16"
+      "192.0.2.1/8"
+    ])
+    [
+      true
+      true
+    ]
+  )
+  (case "isDocumentation IPv4-mapped" (isDocumentation "::ffff:192.0.2.1") false)
+  (fails "isDocumentation throws for invalid input" (isDocumentation "192.0.2.256"))
+
+  # isGlobal
+  (case "isGlobal public unicast"
+    (map isGlobal [
+      "8.8.8.8"
+      "1.1.1.1"
+      "2001:4860:4860::8888"
+      "2a00:1450::1"
+      "3ffe::1"
+    ])
+    [
+      true
+      true
+      true
+      true
+      true
+    ]
+  )
+  (case "isGlobal non-global IPv4 blocks" (map isGlobal [
+    "0.0.0.0"
+    "0.255.255.255"
+    "10.1.2.3"
+    "100.64.0.1"
+    "100.127.255.255"
+    "127.0.0.1"
+    "169.254.1.1"
+    "172.16.0.1"
+    "192.0.0.1"
+    "192.0.2.1"
+    "192.168.1.1"
+    "198.18.0.1"
+    "198.19.255.255"
+    "198.51.100.1"
+    "203.0.113.1"
+    "240.0.0.1"
+    "255.255.255.255"
+  ]) (genList (_: false) 17))
+  (case "isGlobal IPv4 block boundaries" (map isGlobal [
+    "1.0.0.0"
+    "9.255.255.255"
+    "11.0.0.0"
+    "100.63.255.255"
+    "100.128.0.0"
+    "172.15.255.255"
+    "172.32.0.0"
+    "198.17.255.255"
+    "198.20.0.0"
+    "192.88.99.1"
+    "223.255.255.255"
+  ]) (genList (_: true) 11))
+  (case "isGlobal IPv4 exceptions inside 192.0.0.0/24"
+    (map isGlobal [
+      "192.0.0.8"
+      "192.0.0.9"
+      "192.0.0.10"
+      "192.0.0.11"
+      "192.0.0.170"
+    ])
+    [
+      false
+      true
+      true
+      false
+      false
+    ]
+  )
+  (case "isGlobal AS112 and AMT are global"
+    (map isGlobal [
+      "192.31.196.1"
+      "192.175.48.1"
+      "192.52.193.1"
+      "2620:4f:8000::1"
+    ])
+    [
+      true
+      true
+      true
+      true
+    ]
+  )
+  (case "isGlobal non-global IPv6 blocks" (map isGlobal [
+    "::"
+    "::1"
+    "::ffff:8.8.8.8"
+    "::8.8.8.8"
+    "::ffff:0:808:808"
+    "64:ff9b:1::1"
+    "100::1"
+    "2001::1"
+    "2001:0:4136:e378::1"
+    "2001:2::1"
+    "2001:10::1"
+    "2001:db8::1"
+    "2002:808:808::1"
+    "3fff::1"
+    "5f00::1"
+    "fc00::1"
+    "fd00::1"
+    "fe80::1"
+    "fec0::1"
+    "1fff:ffff::"
+    "4000::"
+  ]) (genList (_: false) 21))
+  (case "isGlobal IPv6 exceptions inside 2001::/23"
+    (map isGlobal [
+      "2001:1::"
+      "2001:1::1"
+      "2001:1::2"
+      "2001:1::3"
+      "2001:1::4"
+      "2001:3::1"
+      "2001:3:ffff::1"
+      "2001:4:112::1"
+      "2001:4:113::1"
+      "2001:1f::1"
+      "2001:20::1"
+      "2001:2f:ffff::1"
+      "2001:30::1"
+      "2001:3f::1"
+      "2001:40::1"
+    ])
+    [
+      false
+      true
+      true
+      true
+      false
+      true
+      true
+      true
+      false
+      false
+      true
+      true
+      true
+      true
+      false
+    ]
+  )
+  (case "isGlobal IPv6 boundaries of 2001::/23"
+    (map isGlobal [
+      "2001:1ff:ffff::1"
+      "2001:200::1"
+      "2000:ffff::1"
+    ])
+    [
+      false
+      true
+      true
+    ]
+  )
+  (case "isGlobal NAT64 well-known prefix is global"
+    (map isGlobal [
+      "64:ff9b::8.8.8.8"
+      "64:ff9b::1:0:0"
+    ])
+    [
+      true
+      false
+    ]
+  )
+  (case "isGlobal multicast by scope"
+    (map isGlobal [
+      "ff0e::1"
+      "ff1e::1"
+      "ff05::2"
+      "ff08::1"
+      "ff02::1"
+      "ff0f::1"
+      "224.0.0.251"
+      "224.0.1.1"
+      "232.1.1.1"
+      "239.1.1.1"
+      "239.255.255.250"
+      "233.252.0.1"
+    ])
+    [
+      true
+      true
+      false
+      false
+      false
+      false
+      false
+      true
+      true
+      false
+      false
+      false
+    ]
+  )
+  (case "isGlobal ignores the mask"
+    (map isGlobal [
+      "10.0.0.0/0"
+      "8.8.8.8/8"
+      "2001:db8::/3"
+      "2a00::1/16"
+    ])
+    [
+      false
+      true
+      false
+      true
+    ]
+  )
+  (fails "isGlobal throws for invalid input" (isGlobal "foo"))
+
   # ip6.expand
   (case "ip6.expand an address" (ip6.expand "2001:db8::1") "2001:0db8:0000:0000:0000:0000:0000:0001")
   (case "ip6.expand keeps the mask and lowercases" (ip6.expand "2001:DB8::1/64")
@@ -478,25 +870,285 @@ in
   (case "ip6.special.ipv4Mapped spelled as ::ffff:0:0/96" (canonical "::ffff:0:0/96")
     ip6.special.ipv4Mapped
   )
-  (case "special entries are not nested in each other (except limitedBroadcast in reserved)" (
-    concatMap
-      (
-        special:
-        let
-          names = attrNames special;
-        in
+  (case "special entries are only nested in container blocks" (concatMap
+    (
+      family:
+      let
+        special = family.special;
+        names = attrNames special;
+      in
+      concatMap (
+        a:
         concatMap (
-          a:
-          concatMap (
-            b: optional (a != b && subnetRelation special.${a} special.${b} == "subset") "${a} in ${b}"
-          ) names
+          b:
+          optional (
+            a != b && subnetRelation special.${a} special.${b} == "subset" && !(elem b family.containers)
+          ) "${a} in ${b}"
         ) names
-      )
+      ) names
+    )
+    [
+      {
+        inherit (ip4) special;
+        containers = [
+          "reserved"
+          "ietfProtocolAssignments"
+          "multicast"
+          "adminScoped"
+        ];
+      }
+      {
+        inherit (ip6) special;
+        containers = [
+          "globalUnicast"
+          "ietfProtocolAssignments"
+          "multicast"
+          "linkLocalMulticast"
+        ];
+      }
+    ]
+  ) [ ])
+  (case "nested special entries lie within their container" (
+    with ip4.special;
+    map (pair: subnetRelation (elemAt pair 0) (elemAt pair 1)) [
       [
-        ip4.special
-        ip6.special
+        limitedBroadcast
+        reserved
       ]
-  ) [ "limitedBroadcast in reserved" ])
+      [
+        pcpAnycast
+        ietfProtocolAssignments
+      ]
+      [
+        turnAnycast
+        ietfProtocolAssignments
+      ]
+      [
+        localNetworkControl
+        multicast
+      ]
+      [
+        mcastTestNet
+        multicast
+      ]
+      [
+        organizationLocal
+        adminScoped
+      ]
+      [
+        localScope
+        adminScoped
+      ]
+    ]
+    ++ (
+      with ip6.special;
+      map (pair: subnetRelation (elemAt pair 0) (elemAt pair 1)) [
+        [
+          ietfProtocolAssignments
+          globalUnicast
+        ]
+        [
+          documentation2
+          globalUnicast
+        ]
+        [
+          as112DirectDelegation
+          globalUnicast
+        ]
+        [
+          teredo
+          ietfProtocolAssignments
+        ]
+        [
+          dnsSdSrpAnycast
+          ietfProtocolAssignments
+        ]
+        [
+          droneRemoteId
+          ietfProtocolAssignments
+        ]
+        [
+          solicitedNode
+          linkLocalMulticast
+        ]
+        [
+          linkLocalMulticast
+          multicast
+        ]
+      ]
+    )
+  ) (genList (_: "subset") 15))
+  (case "new ip4.special values"
+    (with ip4.special; [
+      pcpAnycast
+      turnAnycast
+      as112
+      amt
+      as112DirectDelegation
+      localNetworkControl
+      mcastTestNet
+      adminScoped
+      organizationLocal
+      localScope
+    ])
+    [
+      "192.0.0.9/32"
+      "192.0.0.10/32"
+      "192.31.196.0/24"
+      "192.52.193.0/24"
+      "192.175.48.0/24"
+      "224.0.0.0/24"
+      "233.252.0.0/24"
+      "239.0.0.0/8"
+      "239.192.0.0/14"
+      "239.255.0.0/16"
+    ]
+  )
+  (case "new ip6.special values"
+    (with ip6.special; [
+      ipv4Translated
+      globalUnicast
+      teredo
+      pcpAnycast
+      turnAnycast
+      dnsSdSrpAnycast
+      benchmarking
+      amt
+      as112
+      orchidV2
+      droneRemoteId
+      as112DirectDelegation
+      srv6Sid
+      linkLocalMulticast
+      solicitedNode
+    ])
+    [
+      "::ffff:0:0:0/96"
+      "2000::/3"
+      "2001::/32"
+      "2001:1::1/128"
+      "2001:1::2/128"
+      "2001:1::3/128"
+      "2001:2::/48"
+      "2001:3::/32"
+      "2001:4:112::/48"
+      "2001:20::/28"
+      "2001:30::/28"
+      "2620:4f:8000::/48"
+      "5f00::/16"
+      "ff02::/16"
+      "ff02::1:ff00:0/104"
+    ]
+  )
+  (case "ip6.special.ipv4Translated contains ::ffff:0:a.b.c.d but not IPv4-mapped addresses"
+    (map (a: inSubnet a ip6.special.ipv4Translated) [
+      "::ffff:0:c000:201"
+      "::ffff:192.0.2.1"
+    ])
+    [
+      true
+      false
+    ]
+  )
+  (case "ip6.special.solicitedNode boundaries"
+    (map (a: inSubnet a ip6.special.solicitedNode) [
+      "ff02::1:ff00:0"
+      "ff02::1:ffff:ffff"
+      "ff02::1:fe00:0"
+      "ff02::2:ff00:0"
+      "ff12::1:ff00:1"
+    ])
+    [
+      true
+      true
+      false
+      false
+      false
+    ]
+  )
+  (case "ip6.special.srv6Sid / globalUnicast boundaries"
+    (map (pair: inSubnet (elemAt pair 0) (elemAt pair 1)) (
+      with ip6.special;
+      [
+        [
+          "5f00::1"
+          srv6Sid
+        ]
+        [
+          "5f01::"
+          srv6Sid
+        ]
+        [
+          "5eff::"
+          srv6Sid
+        ]
+        [
+          "2000::"
+          globalUnicast
+        ]
+        [
+          "3fff:ffff::"
+          globalUnicast
+        ]
+        [
+          "1fff::"
+          globalUnicast
+        ]
+        [
+          "4000::"
+          globalUnicast
+        ]
+      ]
+    ))
+    [
+      true
+      false
+      false
+      true
+      true
+      false
+      false
+    ]
+  )
+  (case "ip4.special AS112 / AMT boundaries"
+    (map (pair: inSubnet (elemAt pair 0) (elemAt pair 1)) (
+      with ip4.special;
+      [
+        [
+          "192.31.196.255"
+          as112
+        ]
+        [
+          "192.31.197.0"
+          as112
+        ]
+        [
+          "192.175.48.0"
+          as112DirectDelegation
+        ]
+        [
+          "192.175.47.255"
+          as112DirectDelegation
+        ]
+        [
+          "192.52.193.1"
+          amt
+        ]
+        [
+          "192.52.192.255"
+          amt
+        ]
+      ]
+    ))
+    [
+      true
+      false
+      true
+      false
+      true
+      false
+    ]
+  )
   (case "IETF protocol assignment blocks contain the nested assignments"
     (
       map (a: inSubnet a ip4.special.ietfProtocolAssignments) [

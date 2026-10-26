@@ -202,6 +202,78 @@ let
       zipListsWith bitAnd decomposed.addressParts network.networkMaskParts == network.networkParts
     ) ranges.${decomposed._meta.name};
 
+  # Ranges for `isGlobal` per the "Globally Reachable" column of the IANA special-purpose
+  # address registries. An address is global if it lies within `space` but not within
+  # `nonGlobal`, or within `exceptions` (globally reachable blocks inside non-global ones).
+  # Multicast is handled separately below.
+  globalRanges = with self; {
+    space = {
+      ip4 = [ "0.0.0.0/0" ];
+      ip6 = with ip6.special; [
+        globalUnicast
+        nat64
+      ];
+    };
+    nonGlobal = {
+      ip4 = with ip4.special; [
+        thisNetwork
+        private10
+        sharedAddressSpace
+        loopback
+        linkLocal
+        private172
+        ietfProtocolAssignments
+        documentation1
+        private192
+        benchmarking
+        documentation2
+        documentation3
+        reserved
+      ];
+      ip6 = with ip6.special; [
+        ietfProtocolAssignments
+        documentation
+        sixToFour
+        documentation2
+      ];
+    };
+    exceptions = {
+      ip4 = with ip4.special; [
+        pcpAnycast
+        turnAnycast
+      ];
+      ip6 = with ip6.special; [
+        pcpAnycast
+        turnAnycast
+        dnsSdSrpAnycast
+        amt
+        as112
+        orchidV2
+        droneRemoteId
+      ];
+    };
+  };
+
+  # IPv6 multicast scope names (RFC 4291 2.7, RFC 7346 2) by the value of the scope field
+  ip6MulticastScopes = [
+    "reserved" # 0
+    "interface" # 1
+    "link" # 2
+    "realm" # 3
+    "admin" # 4
+    "site" # 5
+    "unassigned" # 6
+    "unassigned" # 7
+    "organization" # 8
+    "unassigned" # 9
+    "unassigned" # a
+    "unassigned" # b
+    "unassigned" # c
+    "unassigned" # d
+    "global" # e
+    "reserved" # f
+  ];
+
   # Hex digits of an address given as list of components, e.g. [ 192 0 2 1 ] -> "c0000201"
   partsToHex =
     meta: parts:
@@ -1322,6 +1394,185 @@ let
     };
 
     /**
+      Returns the scope of a multicast address, or null if the address is no multicast
+      address. The mask of the input is ignored. IPv4-mapped IPv6 addresses are no multicast
+      addresses.
+
+      IPv6 (RFC 4291 2.7, RFC 7346 2): the scope field (the 4th hex digit, bits 12 to 15),
+      whatever the flags in the 3rd hex digit, so `ff12::1` is "link" like `ff02::1`. Scopes
+      1 "interface", 2 "link", 3 "realm", 4 "admin", 5 "site", 8 "organization", e "global",
+      0 and f "reserved", all others "unassigned".
+
+      IPv4 has no scope field, the scope follows from the range: 224.0.0.0/24 (local network
+      control block, RFC 5771) is "link", 239.192.0.0/14 (organization local scope, RFC 2365)
+      is "organization", the rest of 239.0.0.0/8 (administratively scoped, RFC 2365, including
+      the IPv4 local scope 239.255.0.0/16, the smallest administrative scope) is "admin", all
+      other multicast addresses are "global".
+
+      # Inputs
+      `address` : An IPv4 or IPv6 address.
+
+      # Output
+      The scope as string, or null if the address is no multicast address.
+
+      # Errors
+      Throws an error if the input is invalid.
+
+      # Example
+      ```nix
+      multicastScope "ff05::2"
+      # "site"
+      ```
+
+      # Type
+      ```nix
+      String -> String | null
+      ```
+    */
+    multicastScope =
+      address:
+      let
+        decomposed = decompose address;
+        inIp4 =
+          network:
+          classifyAddress decompose {
+            ip4 = [ network ];
+            ip6 = [ ];
+          } address;
+      in
+      if !isMulticast address then
+        null
+      else if decomposed._meta.name == "ip6" then
+        elemAt ip6MulticastScopes (bitAnd (head decomposed.addressParts) 15)
+      else if inIp4 ip4.special.localNetworkControl then
+        "link"
+      else if inIp4 ip4.special.organizationLocal then
+        "organization"
+      else if inIp4 ip4.special.adminScoped then
+        "admin"
+      else
+        "global";
+
+    /**
+      Checks whether an address has link scope: link-local unicast (169.254.0.0/16,
+      fe80::/10) or link-scope multicast (224.0.0.0/24, IPv6 multicast with scope 2 and any
+      flags, e.g. ff02::1 or ff12::1). The mask of the input is ignored. IPv4-mapped IPv6
+      addresses do not have link scope.
+
+      # Inputs
+      `address` : An IPv4 or IPv6 address.
+
+      # Output
+      A boolean indicating whether the address has link scope.
+
+      # Errors
+      Throws an error if the input is invalid.
+
+      # Example
+      ```nix
+      isLinkScope "224.0.0.251"
+      # true
+      ```
+
+      # Type
+      ```nix
+      String -> Bool
+      ```
+    */
+    isLinkScope = address: isLinkLocal address || multicastScope address == "link";
+
+    /**
+      Checks whether an address is reserved for documentation: 192.0.2.0/24, 198.51.100.0/24,
+      203.0.113.0/24 (RFC 5737), 233.252.0.0/24 (MCAST-TEST-NET, RFC 6676), 2001:db8::/32
+      (RFC 3849) or 3fff::/20 (RFC 9637). The mask of the input is ignored. IPv4-mapped IPv6
+      addresses are not documentation addresses.
+
+      # Inputs
+      `address` : An IPv4 or IPv6 address.
+
+      # Output
+      A boolean indicating whether the address is a documentation address.
+
+      # Errors
+      Throws an error if the input is invalid.
+
+      # Example
+      ```nix
+      isDocumentation "3fff::1"
+      # true
+      ```
+
+      # Type
+      ```nix
+      String -> Bool
+      ```
+    */
+    isDocumentation = classifyAddress decompose {
+      ip4 = with ip4.special; [
+        documentation1
+        documentation2
+        documentation3
+        mcastTestNet
+      ];
+      ip6 = with ip6.special; [
+        documentation
+        documentation2
+      ];
+    };
+
+    /**
+      Checks whether an address is globally reachable, per the "Globally Reachable" column of
+      the IANA IPv4 and IPv6 special-purpose address registries. The mask of the input is
+      ignored. IPv4-mapped IPv6 addresses are not global (`::ffff:0:0/96` is not globally
+      reachable), whatever the embedded IPv4 address.
+
+      Unicast IPv4: every address outside the non-global special blocks (0.0.0.0/8, 10.0.0.0/8,
+      100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24,
+      192.168.0.0/16, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24,
+      240.0.0.0/4), except that 192.0.0.9 and 192.0.0.10 (PCP/TURN anycast) are global.
+
+      Unicast IPv6: only addresses within 2000::/3 and the NAT64 well-known prefix
+      64:ff9b::/96 can be global, minus 2001::/23, 2001:db8::/32, 2002::/16 and 3fff::/20,
+      except that 2001:1::1, 2001:1::2, 2001:1::3, 2001:3::/32, 2001:4:112::/48, 2001:20::/28
+      and 2001:30::/28 are global. Blocks the registry marks "N/A" (Teredo 2001::/32, 6to4
+      2002::/16) are not global.
+
+      Multicast (not covered by the registries): global if `multicastScope` is "global" and
+      the address is no documentation address (233.252.0.0/24), so e.g. ff0e::1 and
+      232.1.1.1 are global, ff05::2, 224.0.0.251 and 239.1.1.1 are not.
+
+      # Inputs
+      `address` : An IPv4 or IPv6 address.
+
+      # Output
+      A boolean indicating whether the address is globally reachable.
+
+      # Errors
+      Throws an error if the input is invalid.
+
+      # Example
+      ```nix
+      isGlobal "2001:4860:4860::8888"
+      # true
+      ```
+
+      # Type
+      ```nix
+      String -> Bool
+      ```
+    */
+    isGlobal =
+      address:
+      let
+        inRanges = ranges: classifyAddress decompose ranges address;
+      in
+      if isMulticast address then
+        multicastScope address == "global" && !isDocumentation address
+      else
+        (inRanges globalRanges.space && !inRanges globalRanges.nonGlobal)
+        || inRanges globalRanges.exceptions;
+
+    /**
       Checks whether the given value is a valid NAT64 prefix (RFC 6052 2.2): an IPv6 network
       with explicit mask of 32, 40, 48, 56, 64 or 96, no device bits set, and bits 64 to 71
       (the "u" octet) zero.
@@ -2310,7 +2561,8 @@ let
         Well-known special-purpose networks of the address family, as normalized networks in
         CIDR notation, e.g. `ip6.special.documentation` is `"2001:db8::/32"`. Contains the most
         important entries of the IANA special-purpose address registries (RFC 6890 and its
-        updates) plus multicast; blocks within a listed block are left out.
+        updates) plus multicast. Entries may be nested, e.g. the
+        globally reachable PCP/TURN anycast addresses inside the IETF protocol assignments.
 
         # Type
         ```nix
@@ -2344,12 +2596,22 @@ let
         linkLocal = "169.254.0.0/16"; # RFC 3927
         private172 = "172.16.0.0/12"; # RFC 1918
         ietfProtocolAssignments = "192.0.0.0/24"; # RFC 6890, contains e.g. DS-Lite, PCP/TURN anycast, NAT64 discovery
+        pcpAnycast = "192.0.0.9/32"; # RFC 7723, Port Control Protocol anycast, globally reachable
+        turnAnycast = "192.0.0.10/32"; # RFC 8155, TURN anycast, globally reachable
         documentation1 = "192.0.2.0/24"; # RFC 5737, TEST-NET-1
+        as112 = "192.31.196.0/24"; # RFC 7535, AS112-v4
+        amt = "192.52.193.0/24"; # RFC 7450, Automatic Multicast Tunneling
         private192 = "192.168.0.0/16"; # RFC 1918
+        as112DirectDelegation = "192.175.48.0/24"; # RFC 7534, direct delegation AS112 service
         benchmarking = "198.18.0.0/15"; # RFC 2544
         documentation2 = "198.51.100.0/24"; # RFC 5737, TEST-NET-2
         documentation3 = "203.0.113.0/24"; # RFC 5737, TEST-NET-3
         multicast = "224.0.0.0/4"; # RFC 5771
+        localNetworkControl = "224.0.0.0/24"; # RFC 5771, link-scope multicast, never forwarded
+        mcastTestNet = "233.252.0.0/24"; # RFC 6676, MCAST-TEST-NET, multicast documentation
+        adminScoped = "239.0.0.0/8"; # RFC 2365, administratively scoped multicast
+        organizationLocal = "239.192.0.0/14"; # RFC 2365, IPv4 organization local scope
+        localScope = "239.255.0.0/16"; # RFC 2365, IPv4 local scope (smallest administrative scope)
         reserved = "240.0.0.0/4"; # RFC 1112
         limitedBroadcast = "255.255.255.255/32"; # RFC 919, lies within `reserved`
       };
@@ -2377,16 +2639,31 @@ let
         unspecified = "::/128"; # RFC 4291
         loopback = "::1/128"; # RFC 4291
         ipv4Mapped = "::ffff:0.0.0.0/96"; # RFC 4291, ::ffff:0:0/96
+        ipv4Translated = "::ffff:0:0:0/96"; # RFC 2765 (SIIT), ::ffff:0:a.b.c.d, dropped by RFC 6145, not in the IANA registry
         nat64 = "64:ff9b::/96"; # RFC 6052, IPv4/IPv6 translation well-known prefix
         nat64Local = "64:ff9b:1::/48"; # RFC 8215, local-use IPv4/IPv6 translation
         discardOnly = "100::/64"; # RFC 6666
+        globalUnicast = "2000::/3"; # RFC 4291 2.4, IANA global unicast allocations, contains the blocks up to `documentation2`
         ietfProtocolAssignments = "2001::/23"; # RFC 2928, contains e.g. Teredo, benchmarking, PCP/TURN anycast
+        teredo = "2001::/32"; # RFC 4380
+        pcpAnycast = "2001:1::1/128"; # RFC 7723, Port Control Protocol anycast, globally reachable
+        turnAnycast = "2001:1::2/128"; # RFC 8155, TURN anycast, globally reachable
+        dnsSdSrpAnycast = "2001:1::3/128"; # RFC 9665, DNS-SD Service Registration Protocol anycast, globally reachable
+        benchmarking = "2001:2::/48"; # RFC 5180
+        amt = "2001:3::/32"; # RFC 7450, Automatic Multicast Tunneling, globally reachable
+        as112 = "2001:4:112::/48"; # RFC 7535, AS112-v6, globally reachable
+        orchidV2 = "2001:20::/28"; # RFC 7343, ORCHIDv2, globally reachable
+        droneRemoteId = "2001:30::/28"; # RFC 9374, Drone Remote ID Protocol Entity Tags (DETs), globally reachable
         documentation = "2001:db8::/32"; # RFC 3849
         sixToFour = "2002::/16"; # RFC 3056
+        as112DirectDelegation = "2620:4f:8000::/48"; # RFC 7534, direct delegation AS112 service
         documentation2 = "3fff::/20"; # RFC 9637
+        srv6Sid = "5f00::/16"; # RFC 9602, SRv6 segment identifiers
         uniqueLocal = "fc00::/7"; # RFC 4193
         linkLocal = "fe80::/10"; # RFC 4291
         multicast = "ff00::/8"; # RFC 4291
+        linkLocalMulticast = "ff02::/16"; # RFC 4291 2.7, link scope with flags 0 only, ff12::/16 etc. are link scope too
+        solicitedNode = "ff02::1:ff00:0/104"; # RFC 4291 2.7.1, solicited-node multicast
       };
     };
 
