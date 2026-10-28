@@ -1,14 +1,12 @@
-{ nixpkgs ? null
-, lib ? nixpkgs.lib
-, ...
+{
+  nixpkgs ? null,
+  lib ? nixpkgs.lib,
+  ...
 }@inputs:
-with builtins; with lib;
+with builtins;
+with lib;
 let
-  rep2Add = mask: val:
-    if mask == 0 then
-      0
-    else
-      2 * (rep2Add (mask - 1) val) + val;
+  rep2Add = mask: val: if mask == 0 then 0 else 2 * (rep2Add (mask - 1) val) + val;
 
   # Decimal number of at most three digits, without leading zeros. Used for IPv4 octets
   # (RFC 6943 3.1.1: leading zeros are ambiguous, they may be read as octal) and masks.
@@ -21,7 +19,8 @@ let
   # "::" stands for one or more zero components (RFC 4291 2.2.2). Empty components
   # outside of "::" (e.g. ":1:2:3:4:5:6:7" or "1:::2") are rejected, as is a wrong number
   # of components. Never throws.
-  ipGapSplit = meta: str:
+  ipGapSplit =
+    meta: str:
     let
       pieces = splitString "${meta.componentSeparator}${meta.componentSeparator}" str;
       splitPiece = piece: if piece == "" then [ ] else splitString meta.componentSeparator piece;
@@ -34,7 +33,9 @@ let
     in
     if length pieces == 1 then
       (if any (part: part == "") noGap || length noGap != meta.components then null else noGap)
-    else if length pieces > 2 || any (part: part == "") (lstBeforeGap ++ lstAfterGap) || fillerLength < 1 then
+    else if
+      length pieces > 2 || any (part: part == "") (lstBeforeGap ++ lstAfterGap) || fillerLength < 1
+    then
       null
     else
       lstBeforeGap ++ genList (i: "0") fillerLength ++ lstAfterGap;
@@ -42,7 +43,8 @@ let
   # Replaces a trailing dotted-quad IPv4 address in an IPv6 address by two hexadecimal
   # components (RFC 4291 2.2.3, e.g. "::ffff:192.0.2.1" -> "::ffff:c000:201"),
   # returns null if the IPv4 part is invalid.
-  ip6EmbeddedIp4 = ip4: str:
+  ip6EmbeddedIp4 =
+    ip4: str:
     let
       parts = splitString ":" str;
       ip4Part = last parts;
@@ -55,30 +57,56 @@ let
     else if length parts < 2 || ip4Decomposed == null then
       null
     else
-      concatStringsSep ":" (init parts ++ [
-        (hex (elemAt ip4Parts 0) (elemAt ip4Parts 1))
-        (hex (elemAt ip4Parts 2) (elemAt ip4Parts 3))
-      ]);
+      concatStringsSep ":" (
+        init parts
+        ++ [
+          (hex (elemAt ip4Parts 0) (elemAt ip4Parts 1))
+          (hex (elemAt ip4Parts 2) (elemAt ip4Parts 3))
+        ]
+      );
 
   # Renders IPv6 components per RFC 5952: lower case, longest run of (at least two) zero
   # components replaced by "::" and IPv4-mapped addresses as "::ffff:a.b.c.d" (RFC 5952 5).
-  ipGapJoin = meta: parts:
+  ipGapJoin =
+    meta: parts:
     let
-      ip4Mapped = take 6 parts == [ 0 0 0 0 0 65535 ];
-      ip4MappedStr = "::ffff:${toString (elemAt parts 6 / 256)}.${toString (mod (elemAt parts 6) 256)}.${toString (elemAt parts 7 / 256)}.${toString (mod (elemAt parts 7) 256)}";
+      ip4Mapped =
+        take 6 parts == [
+          0
+          0
+          0
+          0
+          0
+          65535
+        ];
+      ip4MappedStr = "::ffff:${toString (elemAt parts 6 / 256)}.${toString (mod (elemAt parts 6) 256)}.${
+        toString (elemAt parts 7 / 256)
+      }.${toString (mod (elemAt parts 7) 256)}";
 
-      findGaps = foldl
-        (acc: part:
-          let
-            currentGapOrNull = filter (x: x.end == part.index - 1) acc;
-            currentGap = if length currentGapOrNull > 0 then head currentGapOrNull // { end = part.index; } else { start = part.index; end = part.index; };
-          in
-          if part.value == 0 then
-            (filter (gap: gap.start != currentGap.start) acc) ++ [ currentGap ]
-          else
-            acc
-        ) [ ]
-        (map (x: { value = x.fst; index = x.snd; }) (lists.zipLists parts (genList (i: i) meta.components)));
+      findGaps =
+        foldl
+          (
+            acc: part:
+            let
+              currentGapOrNull = filter (x: x.end == part.index - 1) acc;
+              currentGap =
+                if length currentGapOrNull > 0 then
+                  head currentGapOrNull // { end = part.index; }
+                else
+                  {
+                    start = part.index;
+                    end = part.index;
+                  };
+            in
+            if part.value == 0 then (filter (gap: gap.start != currentGap.start) acc) ++ [ currentGap ] else acc
+          )
+          [ ]
+          (
+            map (x: {
+              value = x.fst;
+              index = x.snd;
+            }) (lists.zipLists parts (genList (i: i) meta.components))
+          );
 
       # RFC 5952 4.2.2: "::" must not shorten a single zero component
       compressibleGaps = filter (gap: gap.end > gap.start) findGaps;
@@ -87,15 +115,13 @@ let
         if length compressibleGaps == 0 then
           null
         else
-          foldl (acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc) (head compressibleGaps) compressibleGaps;
+          foldl (
+            acc: gap: if gap.end - gap.start > acc.end - acc.start then gap else acc
+          ) (head compressibleGaps) compressibleGaps;
 
       strParts = map meta.componentToString parts;
 
-      lstBeforeGap =
-        if longestGap.start == 0 then
-          [ "" ]
-        else
-          lists.sublist 0 longestGap.start strParts;
+      lstBeforeGap = if longestGap.start == 0 then [ "" ] else lists.sublist 0 longestGap.start strParts;
 
       lstAfterGap =
         if longestGap.end == meta.components - 1 then
@@ -103,41 +129,56 @@ let
         else
           lists.sublist (longestGap.end + 1) meta.components strParts;
 
-      strPartsRemovedGap =
-        if longestGap == null then
-          strParts
-        else
-          lstBeforeGap ++ [ "" ] ++ lstAfterGap;
+      strPartsRemovedGap = if longestGap == null then strParts else lstBeforeGap ++ [ "" ] ++ lstAfterGap;
     in
     if ip4Mapped then ip4MappedStr else concatStringsSep ":" strPartsRemovedGap;
 
   # Adds `delta` (+1 or -1) to an address given as list of components, carrying across
   # components. Wraps around at the ends of the address space (callers avoid that).
-  partsStep = meta: delta: parts:
+  partsStep =
+    meta: delta: parts:
     (foldr
-      (part: acc:
-        let value = part + acc.carry; in
+      (
+        part: acc:
+        let
+          value = part + acc.carry;
+        in
         if value > meta.componentMask then
-          { carry = 1; result = [ 0 ] ++ acc.result; }
+          {
+            carry = 1;
+            result = [ 0 ] ++ acc.result;
+          }
         else if value < 0 then
-          { carry = -1; result = [ meta.componentMask ] ++ acc.result; }
+          {
+            carry = -1;
+            result = [ meta.componentMask ] ++ acc.result;
+          }
         else
-          { carry = 0; result = [ value ] ++ acc.result; })
-      { carry = delta; result = [ ]; }
-      parts).result;
+          {
+            carry = 0;
+            result = [ value ] ++ acc.result;
+          }
+      )
+      {
+        carry = delta;
+        result = [ ];
+      }
+      parts
+    ).result;
 
   # Host range of a decomposed network: broadcast (all device bits set), first and last
   # usable address as component lists. IPv4: RFC 3021 for /31, a /32 is its only address,
   # otherwise network and broadcast address are excluded. IPv6: the subnet-router anycast
   # address (all device bits zero) is excluded, RFC 6164 for /127, a /128 is its only address.
-  hostRange = decomposed:
+  hostRange =
+    decomposed:
     let
       meta = decomposed._meta;
       deviceBits = meta.bitWidth - decomposed.mask;
       network = decomposed.networkParts;
-      broadcast = zipListsWith (part: maskPart: bitOr part (bitXor maskPart meta.componentMask))
-        network
-        decomposed.networkMaskParts;
+      broadcast = zipListsWith (
+        part: maskPart: bitOr part (bitXor maskPart meta.componentMask)
+      ) network decomposed.networkMaskParts;
       isIp4 = meta.name == "ip4";
     in
     {
@@ -148,20 +189,25 @@ let
 
   # True if `address` lies within one of the networks `ranges.ip4` or `ranges.ip6` (by the
   # family of `address`), ignoring the mask of `address`. Throws if `address` is invalid.
-  classifyAddress = decompose: ranges: address:
+  classifyAddress =
+    decompose: ranges: address:
     let
       decomposed = decompose address;
     in
-    any
-      (range:
-        let network = decompose range; in
-        zipListsWith bitAnd decomposed.addressParts network.networkMaskParts == network.networkParts)
-      ranges.${decomposed._meta.name};
+    any (
+      range:
+      let
+        network = decompose range;
+      in
+      zipListsWith bitAnd decomposed.addressParts network.networkMaskParts == network.networkParts
+    ) ranges.${decomposed._meta.name};
 
   # Hex digits of an address given as list of components, e.g. [ 192 0 2 1 ] -> "c0000201"
-  partsToHex = meta: parts: concatMapStrings
-    (part: fixedWidthString (meta.componentBitWidth / 4) "0" (strings.toLower (trivial.toHexString part)))
-    parts;
+  partsToHex =
+    meta: parts:
+    concatMapStrings (
+      part: fixedWidthString (meta.componentBitWidth / 4) "0" (strings.toLower (trivial.toHexString part))
+    ) parts;
 
   # A mapping between IPv4 and IPv6 addresses, as used by NAT64 (RFC 6052): `ip4` and
   # `ip6` are the decomposed prefixes,
@@ -169,7 +215,8 @@ let
   # of the IPv6 address.
 
   # RFC 6052 2.2: the IPv4 address follows the prefix, skipping bits 64 to 71 (the u octet)
-  nat64Mapping = prefix:
+  nat64Mapping =
+    prefix:
     let
       p = self.ip6.decompose prefix;
       before = min 32 (64 - p.mask); # IPv4 bits placed before the u octet
@@ -179,50 +226,102 @@ let
       ip4 = self.ip4.decompose "0.0.0.0/0";
       segments =
         if p.mask == 96 then
-          [{ ip4 = 0; ip6 = 96; length = 32; }]
+          [
+            {
+              ip4 = 0;
+              ip6 = 96;
+              length = 32;
+            }
+          ]
         else
           filter (segment: segment.length > 0) [
-            { ip4 = 0; ip6 = p.mask; length = before; }
-            { ip4 = before; ip6 = 72; length = 32 - before; }
+            {
+              ip4 = 0;
+              ip6 = p.mask;
+              length = before;
+            }
+            {
+              ip4 = before;
+              ip6 = 72;
+              length = 32 - before;
+            }
           ];
     };
 
   # Translates the decomposed `address` from side `fromSide` ("ip4" or "ip6") of `mapping`
   # to side `toSide`: the segments of the address are copied into the network address of
   # the `toSide` prefix. Returns the address without mask.
-  mapAddress = { mapping, fromSide, toSide, address }:
+  mapAddress =
+    {
+      mapping,
+      fromSide,
+      toSide,
+      address,
+    }:
     let
       target = mapping.${toSide};
     in
-    target._meta.partsToStr (foldl
-      (parts: segment: self.setBitsFromHex {
-        meta = target._meta;
-        inherit parts;
-        from = segment.${toSide};
-        to = segment.${toSide} + segment.length;
-        hex = partsToHex address._meta address.addressParts;
-        offset = segment.${fromSide};
-      })
-      target.networkParts
-      mapping.segments);
+    target._meta.partsToStr (
+      foldl (
+        parts: segment:
+        self.setBitsFromHex {
+          meta = target._meta;
+          inherit parts;
+          from = segment.${toSide};
+          to = segment.${toSide} + segment.length;
+          hex = partsToHex address._meta address.addressParts;
+          offset = segment.${fromSide};
+        }
+      ) target.networkParts mapping.segments
+    );
 
   # Implementation of nat64Address: { value; error; } with `error` null on success
-  nat64Embed = { prefix ? self.ip6.special.nat64, address }:
+  nat64Embed =
+    {
+      prefix ? self.ip6.special.nat64,
+      address,
+    }:
     let
       inherit (self) ip4 ip6;
       v4 = ip4.decompose' address;
-      nonGlobal = any (network: self.inSubnet' v4.addressNoMask network) (with ip4.special; [
-        thisNetwork private10 private172 private192 sharedAddressSpace loopback linkLocal
-      ]);
+      nonGlobal = any (network: self.inSubnet' v4.addressNoMask network) (
+        with ip4.special;
+        [
+          thisNetwork
+          private10
+          private172
+          private192
+          sharedAddressSpace
+          loopback
+          linkLocal
+        ]
+      );
     in
     if v4 == null then
-      { value = null; error = "invalid IPv4 address ${toJSON address}"; }
+      {
+        value = null;
+        error = "invalid IPv4 address ${toJSON address}";
+      }
     else if !self.checkNat64Prefix prefix then
-      { value = null; error = "invalid NAT64 prefix ${toJSON prefix}, must be an IPv6 network of length 32, 40, 48, 56, 64 or 96 with bits 64 to 71 zero (RFC 6052 2.2)"; }
+      {
+        value = null;
+        error = "invalid NAT64 prefix ${toJSON prefix}, must be an IPv6 network of length 32, 40, 48, 56, 64 or 96 with bits 64 to 71 zero (RFC 6052 2.2)";
+      }
     else if (ip6.decompose prefix).network == ip6.special.nat64 && nonGlobal then
-      { value = null; error = "the well-known prefix ${ip6.special.nat64} must not be used with the non-global IPv4 address ${toJSON address} (RFC 6052 3.1), use a network-specific prefix like ${ip6.special.nat64Local}"; }
+      {
+        value = null;
+        error = "the well-known prefix ${ip6.special.nat64} must not be used with the non-global IPv4 address ${toJSON address} (RFC 6052 3.1), use a network-specific prefix like ${ip6.special.nat64Local}";
+      }
     else
-      { value = mapAddress { mapping = nat64Mapping prefix; fromSide = "ip4"; toSide = "ip6"; address = v4; }; error = null; };
+      {
+        value = mapAddress {
+          mapping = nat64Mapping prefix;
+          fromSide = "ip4";
+          toSide = "ip6";
+          address = v4;
+        };
+        error = null;
+      };
 
   # The public library, bound to a name so that the helpers above can use it
   self = rec {
@@ -242,7 +341,8 @@ let
       Int -> Int -> Int
       ```
     */
-    pow = val: exp:
+    pow =
+      val: exp:
       if typeOf val != "int" || typeOf exp != "int" then
         throw "pow expects integers, got ${toString val}^${toString exp}"
       else if exp < 0 then
@@ -275,14 +375,17 @@ let
       ```nix
       String -> String -> String | null
       ```
-      */
-    subnetRelation' = address: network:
+    */
+    subnetRelation' =
+      address: network:
       let
         decomposedAddress = decompose' address;
         decomposedNetwork = decompose' network;
 
-        validAddresses = decomposedNetwork != null && decomposedAddress != null &&
-          decomposedNetwork._meta.name == decomposedAddress._meta.name;
+        validAddresses =
+          decomposedNetwork != null
+          && decomposedAddress != null
+          && decomposedNetwork._meta.name == decomposedAddress._meta.name;
 
         smallestMask = min decomposedAddress.mask decomposedNetwork.mask;
 
@@ -322,12 +425,16 @@ let
 
         # Errors
         Throws an error if the input addresses are invalid or not of the same kind (IPv4 vs IPv6).
-      */
-    subnetRelation = address: network:
+    */
+    subnetRelation =
+      address: network:
       let
         result = subnetRelation' address network;
       in
-      if result != null then result else throw "Invalid IP addresses: ${toJSON address} and ${toJSON network}";
+      if result != null then
+        result
+      else
+        throw "Invalid IP addresses: ${toJSON address} and ${toJSON network}";
 
     /**
       Deprecated alias of `inSubnet'`, kept for compatibility.
@@ -336,7 +443,7 @@ let
       ```nix
       String -> String -> Bool
       ```
-     */
+    */
     laysWithinSubnet' = inSubnet';
 
     /**
@@ -349,9 +456,8 @@ let
       ```nix
       String -> String -> Bool
       ```
-      */
+    */
     laysWithinSubnet = inSubnet;
-
 
     /**
         Computes the bitwise AND of two lists of integers representing IP address parts.
@@ -367,27 +473,26 @@ let
         ```nix
         [ Int ] -> [ Int ] -> [ Int ]
         ```
-        */
-    partsBitAnd = addressParts: maskParts:
+    */
+    partsBitAnd =
+      addressParts: maskParts:
       if length addressParts != length maskParts then
         throw "partsBitAnd expects lists of equal length, got ${toString (length addressParts)} and ${toString (length maskParts)}"
       else
         map (x: bitAnd x.fst x.snd) (lists.zipLists addressParts maskParts);
 
-
-
     /**
       Decomposes the given IP address using the appropriate IP interface.
-   
+
       This function attempts to determine the type of the provided `address`
       by using the `ip'` function. If a valid IP interface is found, it calls
       the `decompose'` method of that interface to break down the address into
       its components. If the address type is not recognized, it returns `null`.
-   
+
       # Input
       `address` : An IP address, which can be either an IPv4 or IPv6 address.
-    
-      # Output 
+
+      # Output
       An attribute set containing the decomposed components of the IP address, or `null` if the address is invalid.
       See `ipN.decompose'` for the structure of the output.
 
@@ -395,16 +500,13 @@ let
       ```nix
       String -> { ... } | null
       ```
-     */
-    decompose' = address:
+    */
+    decompose' =
+      address:
       let
         ipInterface = ip' address;
       in
-      if ipInterface != null then
-        ipInterface.decompose' address
-      else
-        null;
-
+      if ipInterface != null then ipInterface.decompose' address else null;
 
     /**
       Decomposes the given IP address using the appropriate IP interface.
@@ -427,10 +529,13 @@ let
       ```nix
       String -> { ... }
       ```
-      */
-    decompose = address:
-      let result = decompose' address;
-      in if result != null then result else throw "Invalid IP address: ${toJSON address}";
+    */
+    decompose =
+      address:
+      let
+        result = decompose' address;
+      in
+      if result != null then result else throw "Invalid IP address: ${toJSON address}";
 
     /**
       Returns the canonical (RFC 5952 for IPv6) spelling of an IPv4 or IPv6 address. The
@@ -447,8 +552,9 @@ let
       ```nix
       String -> String | null
       ```
-      */
-    canonical' = address:
+    */
+    canonical' =
+      address:
       let
         decomposed = decompose' address;
       in
@@ -476,9 +582,12 @@ let
       ```nix
       String -> String
       ```
-      */
-    canonical = address:
-      let result = canonical' address; in
+    */
+    canonical =
+      address:
+      let
+        result = canonical' address;
+      in
       if result != null then result else throw "Invalid IP address: ${toJSON address}";
 
     /**
@@ -503,40 +612,39 @@ let
       String -> Int -> String | null
       ```
     */
-    assignAddress' = network: index:
+    assignAddress' =
+      network: index:
       let
         ipInterface = ip' network;
         decomposed = ipInterface.decompose' network;
         networkParts = decomposed.networkParts;
         mask = decomposed.mask;
 
-        addressParts = imap0
-          (i: part:
-            let
-              reversedI = ipInterface.meta.components - 1 - i;
-              availableBits = ipInterface.meta.componentBitWidth - (min ipInterface.meta.componentBitWidth (max 0 (mask - i * ipInterface.meta.componentBitWidth)));
+        addressParts = imap0 (
+          i: part:
+          let
+            reversedI = ipInterface.meta.components - 1 - i;
+            availableBits =
+              ipInterface.meta.componentBitWidth
+              - (min ipInterface.meta.componentBitWidth (max 0 (mask - i * ipInterface.meta.componentBitWidth)));
 
-              indexShiftAmount = reversedI * ipInterface.meta.componentBitWidth;
-              offset = index / (pow 2 indexShiftAmount);
+            indexShiftAmount = reversedI * ipInterface.meta.componentBitWidth;
+            offset = index / (pow 2 indexShiftAmount);
 
-              data =
-                if indexShiftAmount >= 64 then
-                  {
-                    offset = 0;
-                    bits = 0;
-                  }
-                else
-                  {
-                    offset = mod offset (ipInterface.meta.componentMask + 1);
-                    bits = availableBits;
-                  };
-            in
-            if data.offset >= pow 2 availableBits then
-              null
-            else
-              bitOr part data.offset
-          )
-          networkParts;
+            data =
+              if indexShiftAmount >= 64 then
+                {
+                  offset = 0;
+                  bits = 0;
+                }
+              else
+                {
+                  offset = mod offset (ipInterface.meta.componentMask + 1);
+                  bits = availableBits;
+                };
+          in
+          if data.offset >= pow 2 availableBits then null else bitOr part data.offset
+        ) networkParts;
 
         address = ipInterface.composeStr addressParts null;
 
@@ -568,9 +676,15 @@ let
       String -> Int -> String
       ```
     */
-    assignAddress = network: index:
-      let result = assignAddress' network index; in
-      if result != null then result else throw "Invalid input or index out of range: ${toJSON network} with index ${toJSON index}";
+    assignAddress =
+      network: index:
+      let
+        result = assignAddress' network index;
+      in
+      if result != null then
+        result
+      else
+        throw "Invalid input or index out of range: ${toJSON network} with index ${toJSON index}";
 
     /**
       Reads `length` bits of the hex string `hex`, starting at bit `offset` (most
@@ -580,16 +694,17 @@ let
       ```nix
       String -> Int -> Int -> Int
       ```
-      */
-    hexBits = hex: offset: length: foldl
-      (acc: bit:
+    */
+    hexBits =
+      hex: offset: length:
+      foldl (
+        acc: bit:
         let
           position = offset + bit;
           nibble = trivial.fromHexString (substring (position / 4) 1 hex);
         in
-        acc * 2 + (if bitAnd nibble (pow 2 (3 - mod position 4)) != 0 then 1 else 0))
-      0
-      (genList (bit: bit) length);
+        acc * 2 + (if bitAnd nibble (pow 2 (3 - mod position 4)) != 0 then 1 else 0)
+      ) 0 (genList (bit: bit) length);
 
     /**
       Replaces the bits `from` (inclusive) to `to` (exclusive) of an address, given as
@@ -601,9 +716,18 @@ let
       ```nix
       { meta : { ... }, parts : [ Int ], from : Int, to : Int, hex : String, offset ? Int } -> [ Int ]
       ```
-      */
-    setBitsFromHex = { meta, parts, from, to, hex, offset ? 0 }: imap0
-      (index: part:
+    */
+    setBitsFromHex =
+      {
+        meta,
+        parts,
+        from,
+        to,
+        hex,
+        offset ? 0,
+      }:
+      imap0 (
+        index: part:
         let
           width = meta.componentBitWidth;
           low = max from (index * width);
@@ -615,8 +739,10 @@ let
         if length <= 0 then
           part
         else
-          bitOr (bitAnd part (bitXor mask meta.componentMask)) (hexBits hex (low - from + offset) length * pow 2 shift))
-      parts;
+          bitOr (bitAnd part (bitXor mask meta.componentMask)) (
+            hexBits hex (low - from + offset) length * pow 2 shift
+          )
+      ) parts;
 
     /**
       Derives a stable address for a device from its name, inside an IPv4 or IPv6 network,
@@ -646,11 +772,12 @@ let
       ```nix
       { salt : String, network : String, name : String } -> String
       ```
-      */
+    */
     hashedAddress =
-      { salt
-      , network
-      , name
+      {
+        salt,
+        network,
+        name,
       }:
       let
         decomposed = decompose network;
@@ -698,12 +825,13 @@ let
       ```nix
       { salt : String, network : String, name : String, prefixLength : Int } -> String
       ```
-      */
+    */
     hashedSubnet =
-      { salt
-      , network
-      , name
-      , prefixLength
+      {
+        salt,
+        network,
+        name,
+        prefixLength,
       }:
       let
         decomposed = decompose network;
@@ -745,8 +873,9 @@ let
       ```nix
       String -> String -> Bool
       ```
-      */
-    inSubnet' = address: network:
+    */
+    inSubnet' =
+      address: network:
       let
         result = subnetRelation' address network;
       in
@@ -776,8 +905,9 @@ let
       ```nix
       String -> String -> Bool
       ```
-      */
-    inSubnet = address: network:
+    */
+    inSubnet =
+      address: network:
       let
         result = subnetRelation address network;
       in
@@ -806,8 +936,9 @@ let
       ```nix
       String -> String
       ```
-      */
-    broadcast = network:
+    */
+    broadcast =
+      network:
       let
         decomposed = decompose network;
       in
@@ -844,8 +975,9 @@ let
       ```nix
       String -> String
       ```
-      */
-    firstHost = network:
+    */
+    firstHost =
+      network:
       let
         range = hostRange (decompose network);
       in
@@ -878,8 +1010,9 @@ let
       ```nix
       String -> String
       ```
-      */
-    lastHost = network:
+    */
+    lastHost =
+      network:
       let
         range = hostRange (decompose network);
       in
@@ -910,8 +1043,9 @@ let
       ```nix
       String -> Int
       ```
-      */
-    hostCount = network:
+    */
+    hostCount =
+      network:
       let
         range = hostRange (decompose network);
         bits = range.deviceBits;
@@ -921,7 +1055,7 @@ let
       else if range.meta.name == "ip4" then
         pow 2 bits - 2
       else if bits <= 63 then
-      # 2^bits - 1 without overflowing for bits = 63
+        # 2^bits - 1 without overflowing for bits = 63
         (pow 2 (bits - 1) - 1) * 2 + 1
       else
         throw "hostCount: ${toJSON network} has 2^${toString bits} - 1 hosts, which does not fit into a 64 bit integer";
@@ -950,7 +1084,7 @@ let
       ```nix
       String -> String -> Bool
       ```
-      */
+    */
     overlaps = a: b: subnetRelation a b != "disjoint";
 
     /**
@@ -977,8 +1111,9 @@ let
       ```nix
       [ String ] -> [ String ]
       ```
-      */
-    assertUniqueAddresses = addresses:
+    */
+    assertUniqueAddresses =
+      addresses:
       let
         groups = groupBy (address: (decompose address).addressNoMask) addresses;
         duplicates = filterAttrs (key: group: length group > 1) groups;
@@ -1013,19 +1148,28 @@ let
       ```nix
       [ String ] -> [ String ]
       ```
-      */
-    assertNoOverlap = networks:
+    */
+    assertNoOverlap =
+      networks:
       let
         count = length networks;
-        pairs = concatLists (genList
-          (i: genList (j: { a = elemAt networks i; b = elemAt networks (i + j + 1); }) (count - i - 1))
-          count);
+        pairs = concatLists (
+          genList (
+            i:
+            genList (j: {
+              a = elemAt networks i;
+              b = elemAt networks (i + j + 1);
+            }) (count - i - 1)
+          ) count
+        );
         overlapping = filter (pair: overlaps pair.a pair.b) pairs;
       in
       if overlapping == [ ] then
         networks
       else
-        throw "assertNoOverlap: overlapping networks: ${concatMapStringsSep "; " (pair: "${toJSON pair.a} and ${toJSON pair.b}") overlapping}";
+        throw "assertNoOverlap: overlapping networks: ${
+          concatMapStringsSep "; " (pair: "${toJSON pair.a} and ${toJSON pair.b}") overlapping
+        }";
 
     /**
       Checks whether an address is private: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
@@ -1051,9 +1195,13 @@ let
       ```nix
       String -> Bool
       ```
-      */
+    */
     isPrivate = classifyAddress decompose {
-      ip4 = with ip4.special; [ private10 private172 private192 ];
+      ip4 = with ip4.special; [
+        private10
+        private172
+        private192
+      ];
       ip6 = [ ip6.special.uniqueLocal ];
     };
 
@@ -1080,7 +1228,7 @@ let
       ```nix
       String -> Bool
       ```
-      */
+    */
     isLoopback = classifyAddress decompose {
       ip4 = [ ip4.special.loopback ];
       ip6 = [ ip6.special.loopback ];
@@ -1109,7 +1257,7 @@ let
       ```nix
       String -> Bool
       ```
-      */
+    */
     isLinkLocal = classifyAddress decompose {
       ip4 = [ ip4.special.linkLocal ];
       ip6 = [ ip6.special.linkLocal ];
@@ -1138,7 +1286,7 @@ let
       ```nix
       String -> Bool
       ```
-      */
+    */
     isULA = classifyAddress decompose {
       ip4 = [ ];
       ip6 = [ ip6.special.uniqueLocal ];
@@ -1167,7 +1315,7 @@ let
       ```nix
       String -> Bool
       ```
-      */
+    */
     isMulticast = classifyAddress decompose {
       ip4 = [ ip4.special.multicast ];
       ip6 = [ ip6.special.multicast ];
@@ -1196,14 +1344,22 @@ let
       ```nix
       Any -> Bool
       ```
-      */
-    checkNat64Prefix = prefix:
+    */
+    checkNat64Prefix =
+      prefix:
       let
         decomposed = ip6.decompose' prefix;
       in
       decomposed != null
       && hasInfix "/" prefix
-      && elem decomposed.mask [ 32 40 48 56 64 96 ]
+      && elem decomposed.mask [
+        32
+        40
+        48
+        56
+        64
+        96
+      ]
       && decomposed.addressParts == decomposed.networkParts
       && bitAnd (elemAt decomposed.addressParts 4) 65280 == 0;
 
@@ -1223,8 +1379,13 @@ let
       ```nix
       { prefix ? String, address : String } -> String | null
       ```
-      */
-    nat64Address' = args: let result = nat64Embed args; in if result.error == null then result.value else null;
+    */
+    nat64Address' =
+      args:
+      let
+        result = nat64Embed args;
+      in
+      if result.error == null then result.value else null;
 
     /**
       Embeds an IPv4 address into an IPv6 address under a NAT64 prefix as defined in
@@ -1256,9 +1417,12 @@ let
       ```nix
       { prefix ? String, address : String } -> String
       ```
-      */
-    nat64Address = args:
-      let result = nat64Embed args; in
+    */
+    nat64Address =
+      args:
+      let
+        result = nat64Embed args;
+      in
       if result.error == null then result.value else throw "nat64Address: ${result.error}";
 
     /**
@@ -1277,17 +1441,30 @@ let
       ```nix
       { prefix ? String, address : String } -> String | null
       ```
-      */
-    nat64Extract' = { prefix ? ip6.special.nat64, address }:
+    */
+    nat64Extract' =
+      {
+        prefix ? ip6.special.nat64,
+        address,
+      }:
       let
         v6 = ip6.decompose' address;
         mapping = nat64Mapping prefix;
       in
-      if v6 == null || !checkNat64Prefix prefix || !inSubnet' v6.addressNoMask mapping.ip6.network
-        || (mapping.ip6.mask != 96 && bitAnd (elemAt v6.addressParts 4) 65280 != 0) then
+      if
+        v6 == null
+        || !checkNat64Prefix prefix
+        || !inSubnet' v6.addressNoMask mapping.ip6.network
+        || (mapping.ip6.mask != 96 && bitAnd (elemAt v6.addressParts 4) 65280 != 0)
+      then
         null
       else
-        mapAddress { inherit mapping; fromSide = "ip6"; toSide = "ip4"; address = v6; };
+        mapAddress {
+          inherit mapping;
+          fromSide = "ip6";
+          toSide = "ip4";
+          address = v6;
+        };
 
     /**
       Like `nat64Extract'`, but throws an error instead of returning `null`.
@@ -1302,11 +1479,18 @@ let
       ```nix
       { prefix ? String, address : String } -> String
       ```
-      */
-    nat64Extract = args:
-      let result = nat64Extract' args; in
-      if result != null then result
-      else throw "nat64Extract: invalid input or ${toJSON args.address} is no NAT64 address within ${toJSON (args.prefix or ip6.special.nat64)}";
+    */
+    nat64Extract =
+      args:
+      let
+        result = nat64Extract' args;
+      in
+      if result != null then
+        result
+      else
+        throw "nat64Extract: invalid input or ${toJSON args.address} is no NAT64 address within ${
+          toJSON (args.prefix or ip6.special.nat64)
+        }";
 
     /**
       Returns the reverse DNS name of an address or network. For an address without mask,
@@ -1335,16 +1519,25 @@ let
       ```nix
       String -> String
       ```
-      */
-    toArpa = address:
+    */
+    toArpa =
+      address:
       let
         decomposed = decompose address;
         isIp4 = decomposed._meta.name == "ip4";
         labelBits = if isIp4 then 8 else 4;
         suffix = if isIp4 then "in-addr.arpa" else "ip6.arpa";
         hexDigit = n: toLower (trivial.toHexString n);
-        nibbles = part: map hexDigit [ (part / 4096) (mod (part / 256) 16) (mod (part / 16) 16) (mod part 16) ];
-        allLabels = if isIp4 then map toString decomposed.networkParts else concatMap nibbles decomposed.networkParts;
+        nibbles =
+          part:
+          map hexDigit [
+            (part / 4096)
+            (mod (part / 256) 16)
+            (mod (part / 16) 16)
+            (mod part 16)
+          ];
+        allLabels =
+          if isIp4 then map toString decomposed.networkParts else concatMap nibbles decomposed.networkParts;
         labels = reverseList (take (decomposed.mask / labelBits) allLabels);
       in
       if mod decomposed.mask labelBits != 0 then
@@ -1379,8 +1572,9 @@ let
       ```nix
       { network : String, mac : String } -> String
       ```
-      */
-    eui64FromMac = { network, mac }:
+    */
+    eui64FromMac =
+      { network, mac }:
       let
         decomposed = decompose network;
         bytes = macToParts mac;
@@ -1421,13 +1615,26 @@ let
       ```nix
       String -> String -> Int
       ```
-      */
-    compareAddresses = a: b:
+    */
+    compareAddresses =
+      a: b:
       let
-        compareInts = x: y: if x < y then -1 else if x > y then 1 else 0;
-        key = address:
-          let decomposed = decompose address; in
-          [ (if decomposed._meta.name == "ip4" then 0 else 1) ] ++ decomposed.addressParts ++ [ decomposed.mask ];
+        compareInts =
+          x: y:
+          if x < y then
+            -1
+          else if x > y then
+            1
+          else
+            0;
+        key =
+          address:
+          let
+            decomposed = decompose address;
+          in
+          [ (if decomposed._meta.name == "ip4" then 0 else 1) ]
+          ++ decomposed.addressParts
+          ++ [ decomposed.mask ];
         keyA = key a;
         keyB = key b;
       in
@@ -1458,11 +1665,12 @@ let
       ```nix
       [ String ] -> [ String ]
       ```
-      */
-    sortAddresses = addresses:
-      foldl' (acc: address: seq (decompose address) acc)
-        (sort (a: b: compareAddresses a b < 0) addresses)
-        addresses;
+    */
+    sortAddresses =
+      addresses:
+      foldl' (acc: address: seq (decompose address) acc) (sort (
+        a: b: compareAddresses a b < 0
+      ) addresses) addresses;
 
     /**
       Decomposes an endpoint, i.e. an IP address without mask plus a port, into its parts.
@@ -1482,27 +1690,38 @@ let
       ```nix
       String -> { address : String, port : Int, family : String } | null
       ```
-      */
-    decomposeEndpoint' = endpoint:
+    */
+    decomposeEndpoint' =
+      endpoint:
       let
         isString = typeOf endpoint == "string";
         ip4Match = if isString then match "([0-9.]+):([0-9]+)" endpoint else null;
         ip6Match = if isString then match "\\[([0-9a-fA-F:.]+)]:([0-9]+)" endpoint else null;
         parsed =
-          if ip4Match != null then { interface = ip4; parts = ip4Match; }
-          else if ip6Match != null then { interface = ip6; parts = ip6Match; }
-          else null;
+          if ip4Match != null then
+            {
+              interface = ip4;
+              parts = ip4Match;
+            }
+          else if ip6Match != null then
+            {
+              interface = ip6;
+              parts = ip6Match;
+            }
+          else
+            null;
         address = elemAt parsed.parts 0;
         port = elemAt parsed.parts 1;
         validPort = match "0|[1-9][0-9]{0,4}" port != null && toInt port <= 65535;
       in
       if parsed == null || !(parsed.interface.checkNoMask address) || !validPort then
         null
-      else {
-        address = (parsed.interface.decompose address).addressNoMask;
-        port = toInt port;
-        family = parsed.interface.meta.name;
-      };
+      else
+        {
+          address = (parsed.interface.decompose address).addressNoMask;
+          port = toInt port;
+          family = parsed.interface.meta.name;
+        };
 
     /**
       Decomposes an endpoint, i.e. an IP address without mask plus a port, into its parts.
@@ -1521,9 +1740,12 @@ let
       ```nix
       String -> { address : String, port : Int, family : String }
       ```
-      */
-    decomposeEndpoint = endpoint:
-      let result = decomposeEndpoint' endpoint; in
+    */
+    decomposeEndpoint =
+      endpoint:
+      let
+        result = decomposeEndpoint' endpoint;
+      in
       if result != null then result else throw "Invalid endpoint: ${toJSON endpoint}";
 
     /**
@@ -1540,11 +1762,13 @@ let
       ```nix
       String -> Bool
       ```
-      */
-    checkMac = val:
-      typeOf val == "string" && (
-        match "[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}" val != null ||
-        match "[0-9a-fA-F]{2}(-[0-9a-fA-F]{2}){5}" val != null
+    */
+    checkMac =
+      val:
+      typeOf val == "string"
+      && (
+        match "[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}" val != null
+        || match "[0-9a-fA-F]{2}(-[0-9a-fA-F]{2}){5}" val != null
       );
 
     /**
@@ -1560,12 +1784,10 @@ let
       ```nix
       String -> [ Int ] | null
       ```
-      */
-    macToParts' = mac:
-      if !(checkMac mac) then
-        null
-      else
-        map trivial.fromHexString (splitString (substring 2 1 mac) mac);
+    */
+    macToParts' =
+      mac:
+      if !(checkMac mac) then null else map trivial.fromHexString (splitString (substring 2 1 mac) mac);
 
     /**
       Splits a MAC address into its six bytes.
@@ -1584,9 +1806,12 @@ let
       ```nix
       String -> [ Int ]
       ```
-      */
-    macToParts = mac:
-      let result = macToParts' mac; in
+    */
+    macToParts =
+      mac:
+      let
+        result = macToParts' mac;
+      in
       if result != null then result else throw "Invalid MAC address: ${toJSON mac}";
 
     /**
@@ -1604,8 +1829,9 @@ let
       ```nix
       String -> Int | null
       ```
-      */
-    prefixFromNetmask' = netmask:
+    */
+    prefixFromNetmask' =
+      netmask:
       let
         interface = ip' netmask;
         parts = (interface.decompose netmask).addressParts;
@@ -1633,9 +1859,12 @@ let
       ```nix
       String -> Int
       ```
-      */
-    prefixFromNetmask = netmask:
-      let result = prefixFromNetmask' netmask; in
+    */
+    prefixFromNetmask =
+      netmask:
+      let
+        result = prefixFromNetmask' netmask;
+      in
       if result != null then result else throw "Invalid netmask: ${toJSON netmask}";
 
     /**
@@ -1651,8 +1880,10 @@ let
       ```nix
       String -> { ... } | null
       ```
-      **/
-    ip' = address:
+      *
+    */
+    ip' =
+      address:
       if ip4.check address then
         ip4
       else if ip6.check address then
@@ -1676,9 +1907,13 @@ let
       ```nix
       String -> { ... }
       ```
-      **/
-    ip = address:
-      let result = ip' address; in
+      *
+    */
+    ip =
+      address:
+      let
+        result = ip' address;
+      in
       if result != null then result else throw "Invalid IP address: ${toJSON address}";
 
     ipN = meta: rec {
@@ -1696,8 +1931,9 @@ let
         ```nix
         [ Int ] -> Int | null -> String
         ```
-        */
-      composeStr = addressParts: mask:
+      */
+      composeStr =
+        addressParts: mask:
         if mask != null then
           "${meta.partsToStr addressParts}/${toString mask}"
         else
@@ -1716,23 +1952,26 @@ let
         ```nix
         Int -> [ Int ]
         ```
-        */
-      calculateNetworkMaskParts = mask:
+      */
+      calculateNetworkMaskParts =
+        mask:
         if !checkIpMask mask then
           throw "Illegal arguments"
         else
-          genList
-            (i:
-              let
-                startOfComponent = i * meta.componentBitWidth;
-                endOfComponent = startOfComponent + meta.componentBitWidth;
-                bitsInComponent = max (min (mask - startOfComponent) meta.componentBitWidth) 0;
-              in
-              if mask <= startOfComponent then 0
-              else if mask >= endOfComponent then meta.componentMask
-              else (rep2Add bitsInComponent 1) * pow 2 (meta.componentBitWidth - bitsInComponent)
-            )
-            meta.components;
+          genList (
+            i:
+            let
+              startOfComponent = i * meta.componentBitWidth;
+              endOfComponent = startOfComponent + meta.componentBitWidth;
+              bitsInComponent = max (min (mask - startOfComponent) meta.componentBitWidth) 0;
+            in
+            if mask <= startOfComponent then
+              0
+            else if mask >= endOfComponent then
+              meta.componentMask
+            else
+              (rep2Add bitsInComponent 1) * pow 2 (meta.componentBitWidth - bitsInComponent)
+          ) meta.components;
 
       /**
         Computes the device mask for an IP address given a CIDR mask.
@@ -1747,9 +1986,9 @@ let
         ```nix
         Int -> [ Int ]
         ```
-        */
-      calculateDeviceMaskParts = mask:
-        map (part: bitAnd (bitNot part) meta.componentMask) (calculateNetworkMaskParts mask);
+      */
+      calculateDeviceMaskParts =
+        mask: map (part: bitAnd (bitNot part) meta.componentMask) (calculateNetworkMaskParts mask);
 
       /**
         Decomposes an IP address in CIDR notation into its components.
@@ -1781,8 +2020,9 @@ let
         ```nix
         String -> { addressParts : [ Int ], address : String, networkParts : [ Int ], network : String, deviceParts : [ Int ], device : String, mask : Int } | null
         ```
-          */
-      decompose' = val:
+      */
+      decompose' =
+        val:
         let
           validString = typeOf val == "string";
 
@@ -1792,13 +2032,16 @@ let
           validMask = length parts <= 2 && checkDecimal mask && toInt mask <= meta.bitWidth;
 
           chunkedAddress = meta.strToParts address;
-          validAddressPart = chunkedAddress != null && length chunkedAddress == meta.components && all
-            (part:
+          validAddressPart =
+            chunkedAddress != null
+            && length chunkedAddress == meta.components
+            && all (
+              part:
               let
                 partInt = meta.componentFromString part;
               in
-              meta.componentIsValidString part && partInt >= 0 && partInt <= meta.componentMask)
-            chunkedAddress;
+              meta.componentIsValidString part && partInt >= 0 && partInt <= meta.componentMask
+            ) chunkedAddress;
 
           chunks = map meta.componentFromString chunkedAddress;
           maskInt = toInt mask;
@@ -1811,22 +2054,25 @@ let
           compose = adr: composeStr adr maskInt;
           composeNoMask = adr: composeStr adr null;
         in
-        if validString && validMask && validAddressPart then {
-          addressParts = chunks;
-          address = compose chunks;
-          addressNoMask = composeNoMask chunks;
-          networkParts = networkPart;
-          network = compose networkPart;
-          networkNoMask = composeNoMask networkPart;
-          deviceParts = devicePart;
-          device = compose devicePart;
-          deviceNoMask = composeNoMask devicePart;
-          networkMaskParts = networkMask;
-          networkMask = compose networkMask;
-          networkMaskNoMask = composeNoMask networkMask;
-          mask = maskInt;
-          _meta = meta;
-        } else null;
+        if validString && validMask && validAddressPart then
+          {
+            addressParts = chunks;
+            address = compose chunks;
+            addressNoMask = composeNoMask chunks;
+            networkParts = networkPart;
+            network = compose networkPart;
+            networkNoMask = composeNoMask networkPart;
+            deviceParts = devicePart;
+            device = compose devicePart;
+            deviceNoMask = composeNoMask devicePart;
+            networkMaskParts = networkMask;
+            networkMask = compose networkMask;
+            networkMaskNoMask = composeNoMask networkMask;
+            mask = maskInt;
+            _meta = meta;
+          }
+        else
+          null;
 
       /**
         Decomposes an IP address in CIDR notation into its components.
@@ -1856,9 +2102,12 @@ let
         ```nix
         String -> { addressParts : [ Int ], address : String, networkParts : [ Int ], network : String, deviceParts : [ Int ], device : String, mask : Int }
         ```
-        */
-      decompose = val:
-        let result = decompose' val; in
+      */
+      decompose =
+        val:
+        let
+          result = decompose' val;
+        in
         if result != null then result else throw "Invalid ${meta.description}: ${toJSON val}";
 
       /**
@@ -1874,8 +2123,12 @@ let
         ```nix
         [ Int ] -> Bool
         ```
-        */
-      checkIpParts = val: typeOf val == "list" && all (part: typeOf part == "int" && part >= 0 && part <= meta.componentMask) val && length val == meta.components;
+      */
+      checkIpParts =
+        val:
+        typeOf val == "list"
+        && all (part: typeOf part == "int" && part >= 0 && part <= meta.componentMask) val
+        && length val == meta.components;
 
       /**
         Checks if the given value is a valid IP mask.
@@ -1885,12 +2138,12 @@ let
 
         # Output
         A boolean indicating whether the input is a valid IP mask.
-      
+
         # Type
         ```nix
         Int -> Bool
         ```
-        */
+      */
       checkIpMask = mask: typeOf mask == "int" && mask >= 0 && mask <= meta.bitWidth;
 
       /**
@@ -1908,8 +2161,9 @@ let
         ```nix
         String -> Bool
         ```
-        */
-      checkNormalizedNetwork = val:
+      */
+      checkNormalizedNetwork =
+        val:
         let
           result = decompose' val;
         in
@@ -1928,7 +2182,7 @@ let
         ```nix
         String -> Bool
         ```
-        */
+      */
       check = val: decompose' val != null;
 
       /**
@@ -1946,12 +2200,12 @@ let
         ```nix
         String -> Bool
         ```
-        */
+      */
       checkNoMask = val: check val && !(hasInfix "/" val);
 
       /**
         Checks if the given value is a valid IP address in CIDR notation with trailing /mask.
-  
+
         # Input
         `val` : A string representing the IP address in CIDR notation, e.g. "1.2.3.4/32"
 
@@ -1964,7 +2218,7 @@ let
         ```nix
         String -> Bool
         ```
-        */
+      */
       checkWithMask = val: check val && hasInfix "/" val;
 
       /**
@@ -1981,8 +2235,9 @@ let
         ```nix
         String -> Bool
         ```
-        */
-      checkCanonical = val:
+      */
+      checkCanonical =
+        val:
         let
           result = decompose' val;
         in
@@ -2005,8 +2260,9 @@ let
         ```nix
         Int -> String
         ```
-        */
-      netmaskFromPrefix = prefix:
+      */
+      netmaskFromPrefix =
+        prefix:
         if !checkIpMask prefix then
           throw "Invalid prefix length for ${meta.description}: ${toJSON prefix}"
         else
@@ -2038,14 +2294,15 @@ let
         ```nix
         String -> String
         ```
-        */
-      expand = val:
+      */
+      expand =
+        val:
         let
           decomposed = decompose val;
           pad = str: if meta.name == "ip6" then fixedWidthString 4 "0" str else str;
-          expanded = concatMapStringsSep meta.componentSeparator
-            (part: pad (meta.componentToString part))
-            decomposed.addressParts;
+          expanded = concatMapStringsSep meta.componentSeparator (
+            part: pad (meta.componentToString part)
+          ) decomposed.addressParts;
         in
         if hasInfix "/" val then "${expanded}/${toString decomposed.mask}" else expanded;
 
@@ -2059,7 +2316,7 @@ let
         ```nix
         { <name> : String }
         ```
-        */
+      */
       inherit (meta) special;
 
       inherit meta;
@@ -2077,7 +2334,8 @@ let
       componentFromString = toInt; # Function to convert a component string to an integer
       componentToString = toString; # Function to convert a component integer to a string
       strToParts = splitString "."; # Function to split a string representation of an IP address into its components
-      partsToStr = addressParts: concatStringsSep componentSeparator (map componentToString addressParts); # Function to convert a list of components to a string representation
+      partsToStr =
+        addressParts: concatStringsSep componentSeparator (map componentToString addressParts); # Function to convert a list of components to a string representation
       special = {
         thisNetwork = "0.0.0.0/8"; # RFC 791
         private10 = "10.0.0.0/8"; # RFC 1918
@@ -2108,7 +2366,12 @@ let
       componentIsValidString = checkHex; # Function to check if a string is a valid component
       componentFromString = trivial.fromHexString; # Function to convert a component string to an integer
       componentToString = x: strings.toLower (trivial.toHexString x); # Function to convert a component integer to a string
-      strToParts = str: let str' = ip6EmbeddedIp4 ip4 str; in if str' == null then null else ipGapSplit ip6.meta str'; # Function to split a string representation of an IP address into its components
+      strToParts =
+        str:
+        let
+          str' = ip6EmbeddedIp4 ip4 str;
+        in
+        if str' == null then null else ipGapSplit ip6.meta str'; # Function to split a string representation of an IP address into its components
       partsToStr = ipGapJoin ip6.meta; # Function to convert a list of components to a string representation
       special = {
         unspecified = "::/128"; # RFC 4291
@@ -2128,7 +2391,17 @@ let
     };
 
     types = import ./types.nix {
-      inherit lib ip4 ip6 subnetRelation' decompose' decomposeEndpoint' checkMac prefixFromNetmask' checkNat64Prefix;
+      inherit
+        lib
+        ip4
+        ip6
+        subnetRelation'
+        decompose'
+        decomposeEndpoint'
+        checkMac
+        prefixFromNetmask'
+        checkNat64Prefix
+        ;
     };
   };
 in

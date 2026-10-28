@@ -3,12 +3,17 @@
 
   inputs = {
     nixpkgs-lib.url = "github:nix-community/nixpkgs.lib";
+    # Only used for the formatter, consumers can drop it with
+    # `inputs.nix-net-lib.inputs.nixpkgs.follows = "nixpkgs";`
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
   outputs =
-    { self
-    , nixpkgs-lib
-    , ...
+    {
+      self,
+      nixpkgs-lib,
+      nixpkgs,
+      ...
     }:
     let
       lib = nixpkgs-lib.lib;
@@ -16,15 +21,20 @@
       netLib = import ./lib.nix { inherit lib; };
 
       # Number of test cases, throws listing all failures otherwise
-      tests = (import ./tests.nix {
-        inherit lib netLib;
-      }).tests;
+      tests =
+        (import ./tests.nix {
+          inherit lib netLib;
+        }).tests;
 
       libOverlay = import ./lib-overlay.nix { inherit netLib; };
 
       overlays = import ./overlays.nix { inherit libOverlay; };
 
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
     in
     {
       # Expose library via `nix-net-lib.lib`
@@ -40,7 +50,12 @@
       overlays.default = overlays;
 
       # Makes the library available as the `netLib` module argument
-      nixosModules.default = { _module.args.netLib = netLib; };
+      nixosModules.default = {
+        _module.args.netLib = netLib;
+      };
+
+      # `nix fmt` formats all Nix files with nixfmt (RFC 166 style)
+      formatter = lib.genAttrs systems (system: nixpkgs.legacyPackages.${system}.nixfmt-tree);
 
       # `nix flake check` only evaluates (and builds) this if all tests pass
       checks = lib.genAttrs systems (system: {
@@ -48,7 +63,10 @@
           name = "netlib-tests";
           inherit system;
           builder = "/bin/sh";
-          args = [ "-c" "echo '${toString tests} tests passed' > $out" ];
+          args = [
+            "-c"
+            "echo '${toString tests} tests passed' > $out"
+          ];
         };
       });
     };

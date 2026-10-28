@@ -25,12 +25,14 @@
     attributes are compared and attributes starting with "_" (e.g. `_meta`) are ignored.
   - An expression that throws is reported as a failure instead of aborting the run.
 */
-{ nixpkgs ? null
-, lib ? nixpkgs.lib
-, netLib ? import ./lib.nix { inherit lib; }
-, ...
+{
+  nixpkgs ? null,
+  lib ? nixpkgs.lib,
+  netLib ? import ./lib.nix { inherit lib; },
+  ...
 }:
-with builtins; with lib;
+with builtins;
+with lib;
 let
   testFiles = [
     ./tests/core.nix
@@ -43,7 +45,8 @@ let
   testCases = concatMap (file: import file { inherit lib netLib throws; }) testFiles;
 
   # Returns null if the test case passes, otherwise a message describing the failure.
-  runTestCase = index: testCase:
+  runTestCase =
+    index: testCase:
     let
       inherit (testCase) description;
       evaluated = tryEval (deepSeq testCase.expression testCase.expression);
@@ -52,12 +55,23 @@ let
 
       allEqual = list: all (x: x == head list) list;
       bothSets = typeOf expression == "set" && typeOf expected == "set";
-      onlyDifference = attrsets.filterAttrs
-        (k: v: (!(allEqual v) || length v != 2) && (head (strings.stringToCharacters k) != "_"))
-        (attrsets.zipAttrs [ expression expected ]);
+      onlyDifference =
+        attrsets.filterAttrs
+          (k: v: (!(allEqual v) || length v != 2) && (head (strings.stringToCharacters k) != "_"))
+          (
+            attrsets.zipAttrs [
+              expression
+              expected
+            ]
+          );
       differenceSet = attrNames onlyDifference;
 
-      showValue = v: let r = tryEval (toJSON v); in if r.success then r.value else "<${typeOf v}>";
+      showValue =
+        v:
+        let
+          r = tryEval (toJSON v);
+        in
+        if r.success then r.value else "<${typeOf v}>";
 
       mismatchString =
         if bothSets then

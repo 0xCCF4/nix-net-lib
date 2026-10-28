@@ -11,3 +11,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - run: nix flake check
+      - run: nix fmt -- --ci
